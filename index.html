@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f5f5" />
+    <meta name="description" content="sing-box 1.14.0 配置与订阅链接生成器" />
+    <title>sing-box · 配置生成器</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css?v=17" />
+  </head>
+  <body>
+    <svg class="svg-sprite" aria-hidden="true">
+      <symbol id="i-grid" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M3 6.5h7l2 2h9v10.5H3z"/></symbol>
+      <symbol id="i-activity" viewBox="0 0 24 24"><path d="M7 3v15m0 0-3-3m3 3 3-3M17 21V6m0 0-3 3m3-3 3 3"/></symbol>
+      <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1"/><path d="m6 9 3 3-3 3M11 15h5"/></symbol>
+      <symbol id="i-log" viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5zM8 9h8M8 13h8M8 17h5"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.87-.34A1.7 1.7 0 0 0 14 20.92V21h-4v-.08A1.7 1.7 0 0 0 8.96 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3.08 14H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.96 4.6 1.7 1.7 0 0 0 10 3.08V3h4v.08A1.7 1.7 0 0 0 15.04 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9 1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-import" viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 20h16"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+      <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 5-6 7 6 7M16 5l6 7-6 7M14 3l-4 18"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.8 3.2 7.9 7.5 9.5 4.3-1.6 7.5-4.7 7.5-9.5V6z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></symbol>
+      <symbol id="i-network" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="12" cy="19" r="2"/><path d="m6.5 10.5 4-4m3 0 4 4m0 3-4 4m-3 0-4-4"/></symbol>
+    </svg>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <strong>sing-box</strong>
+          <small>配置订阅生成器</small>
+          <span class="core-version">内核 1.14.0</span>
+        </div>
+        <nav class="main-nav" aria-label="主导航">
+          <button class="active" data-scroll="profiles" data-title="基础配置" aria-current="page"><svg><use href="#i-grid"/></svg><span>基础配置</span></button>
+          <button data-scroll="nodes" data-title="代理节点"><svg><use href="#i-file"/></svg><span>代理节点</span><i>3</i></button>
+          <button data-scroll="endpoints" data-title="端点"><svg><use href="#i-network"/></svg><span>端点</span><i>0</i></button>
+          <button data-scroll="inbounds" data-title="入站"><svg><use href="#i-import"/></svg><span>入站</span><i>0</i></button>
+          <button data-scroll="dns" data-title="DNS"><svg><use href="#i-shield"/></svg><span>DNS</span><i>0</i></button>
+          <button data-scroll="settings" data-title="路由与规则"><svg><use href="#i-sliders"/></svg><span>路由与规则</span></button>
+          <button data-scroll="services" data-title="服务与实验性"><svg><use href="#i-terminal"/></svg><span>服务</span><i>0</i></button>
+          <button data-scroll="preview" data-title="配置预览"><svg><use href="#i-code"/></svg><span>配置预览</span></button>
+        </nav>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <button class="mobile-menu" id="mobileMenu" aria-label="打开导航"><span></span><span></span><span></span></button>
+          <div class="topbar-copy"><h1 id="currentSectionTitle">基础配置</h1><p>sing-box 1.14.0 配置订阅生成器</p></div>
+          <div class="local-mode"><i></i><span>本地生成，数据不上传</span></div>
+        </header>
+
+        <section class="content" id="profiles">
+          <section class="panel profile-panel">
+            <div class="panel-title">
+              <div><svg><use href="#i-file"/></svg><strong>基础配置</strong><span class="version-note">1.14.0</span></div>
+              <div class="page-actions">
+                <button class="soft-button reset-button" id="resetBtn" title="恢复演示配置"><span>↻</span>恢复示例</button>
+                <button class="soft-button" id="importBtn"><svg><use href="#i-import"/></svg>导入链接</button>
+                <button class="soft-button" id="importConfigBtn" type="button"><svg><use href="#i-file"/></svg>导入配置</button>
+                <button class="soft-button" id="backupBtn" type="button"><svg><use href="#i-download"/></svg>备份/恢复</button>
+                <button class="soft-button" id="addNodeBtn"><svg><use href="#i-plus"/></svg>添加节点</button>
+                <button class="primary-button" id="generateBtn">生成订阅</button>
+              </div>
+            </div>
+            <div class="form-grid four">
+              <label class="field"><span>档案名称</span><input id="profileName" value="My Sing Profile" autocomplete="off" /></label>
+              <label class="field"><span>日志级别</span><select id="logLevel"><option value="info">Info</option><option value="warn">Warn</option><option value="error">Error</option><option value="debug">Debug</option></select></label>
+            </div>
+          </section>
+
+          <section class="panel node-panel" id="nodes">
+            <div class="group-heading"><div><strong>代理节点</strong><span>PROXY · Selector</span></div><div class="group-tools"><b id="nodeCount">0</b><button class="subscription-tool" id="addSubscriptionBtn" title="添加订阅"><svg><use href="#i-link"/></svg><span>订阅</span></button><button id="exportLinksBtn" title="导出分享链接"><svg><use href="#i-copy"/></svg></button><button id="tidyNodesBtn" title="整理节点"><svg><use href="#i-sliders"/></svg></button><button id="inlineImportBtn" title="导入节点"><svg><use href="#i-import"/></svg></button><button id="inlineAddBtn" title="添加节点"><svg><use href="#i-plus"/></svg></button></div></div>
+            <div class="subscription-sources hidden" id="subscriptionSources"></div>
+            <div class="node-list" id="nodeList"></div>
+            <div class="node-foot"><span><i></i><span id="nodeReadyText">0 个节点可生成</span></span><button class="text-button" id="clearNodesBtn">清空</button></div>
+
+            <div class="group-heading"><div><strong>出站组</strong><span>Selector · URLTest</span></div><div class="group-tools"><b id="groupCount">0</b><button class="subscription-tool" id="addGroupBtn" type="button" title="添加出站组"><svg><use href="#i-plus"/></svg><span>添加</span></button></div></div>
+            <div class="endpoint-list sortable-list" id="groupList"></div>
+            <div class="node-foot"><span><i></i><span id="groupSummaryText">0 个出站组</span></span><small>列表中的第一个出站组会作为默认出站</small></div>
+          </section>
+
+          <section class="panel endpoint-panel" id="endpoints">
+            <div class="group-heading"><div><strong>端点</strong><span>Endpoint · 独立网络接口</span></div><div class="group-tools"><b id="endpointCount">0</b><button class="subscription-tool" id="addEndpointBtn" title="添加端点"><svg><use href="#i-plus"/></svg><span>添加端点</span></button></div></div>
+            <div class="endpoint-list" id="endpointList"></div>
+            <div class="node-foot"><span><i></i><span id="endpointReadyText">0 个端点已启用</span></span><small>生成到顶层 endpoints，不计入代理节点</small></div>
+          </section>
+
+          <section class="panel inbound-panel" id="inbounds">
+            <div class="panel-title">
+              <div><svg><use href="#i-import"/></svg><strong>入站</strong><span class="version-note">1.14.0</span></div>
+              <div class="page-actions">
+                <button class="soft-button" id="addInboundBtn" type="button"><svg><use href="#i-plus"/></svg>添加入站</button>
+              </div>
+            </div>
+            <div class="endpoint-list sortable-list" id="inboundList"></div>
+            <div class="node-foot"><span><i></i><span id="inboundSummaryText">0 个入站</span></span><small>入站顺序不影响匹配，路由规则通过标签引用</small></div>
+          </section>
+
+          <section class="panel dns-panel" id="dns">
+            <div class="panel-title">
+              <div><svg><use href="#i-shield"/></svg><strong>DNS</strong><span class="version-note">1.14.0</span></div>
+              <div class="page-actions">
+                <button class="soft-button" id="addDnsServerBtn" type="button"><svg><use href="#i-plus"/></svg>添加 Server</button>
+                <button class="soft-button" id="addDnsRuleBtn" type="button"><svg><use href="#i-plus"/></svg>添加规则</button>
+              </div>
+            </div>
+            <div class="form-grid four dns-fields">
+              <label class="field"><span>默认 Server <em>final</em></span><select id="dnsFinal"></select></label>
+              <label class="field"><span>默认域名解析器</span><select id="dnsDefaultResolver"></select></label>
+              <label class="field"><span>解析策略 <em>strategy</em></span><select id="dnsStrategy"><option value="">跟随内核默认</option><option value="prefer_ipv4">优先 IPv4</option><option value="prefer_ipv6">优先 IPv6</option><option value="ipv4_only">仅 IPv4</option><option value="ipv6_only">仅 IPv6</option></select></label>
+              <label class="field"><span>查询超时 <em>1.14</em></span><input id="dnsTimeout" placeholder="默认 10s" autocomplete="off" /></label>
+              <label class="field"><span>缓存容量</span><input id="dnsCacheCapacity" type="number" min="1024" placeholder="小于 1024 会被忽略" /></label>
+              <label class="field"><span>乐观缓存超时 <em>1.14</em></span><input id="dnsOptimisticTimeout" placeholder="默认 3d" autocomplete="off" /></label>
+              <label class="field"><span>客户端子网 <em>EDNS</em></span><input id="dnsClientSubnet" placeholder="例如 1.2.3.0/24" autocomplete="off" /></label>
+            </div>
+            <div class="settings-list dns-switches">
+              <label class="setting-row"><div><strong>乐观缓存 <em>1.14</em></strong><small>过期缓存先返回再后台刷新，与禁用缓存冲突</small></div><input type="checkbox" id="dnsOptimistic" /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>禁用缓存</strong><small>disable_cache</small></div><input type="checkbox" id="dnsDisableCache" /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>禁用缓存过期</strong><small>disable_expire</small></div><input type="checkbox" id="dnsDisableExpire" /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>反向映射</strong><small>记录响应地址以便路由时还原域名</small></div><input type="checkbox" id="dnsReverseMapping" /><span class="switch"></span></label>
+            </div>
+
+            <div class="group-heading"><div><strong>DNS Server</strong><span>Local · Hosts · DoT · DoQ · DoH · DoH3 · FakeIP · mDNS 等</span></div><div class="group-tools"><b id="dnsServerCount">0</b><button class="subscription-tool" id="addDnsServerInline" type="button" title="添加 DNS Server"><svg><use href="#i-plus"/></svg><span>添加</span></button></div></div>
+            <div class="endpoint-list sortable-list" id="dnsServerList"></div>
+
+            <div class="group-heading"><div><strong>DNS 规则</strong><span>route · evaluate · respond · reject · predefined</span></div><div class="group-tools"><b id="dnsRuleCount">0</b><button class="subscription-tool" id="addDnsRuleInline" type="button" title="添加 DNS 规则"><svg><use href="#i-plus"/></svg><span>添加</span></button></div></div>
+            <div class="endpoint-list sortable-list" id="dnsRuleList"></div>
+            <div class="node-foot"><span><i></i><span id="dnsSummaryText">0 个 Server · 0 条规则</span></span><small>按列表顺序匹配，可拖动排序</small></div>
+          </section>
+
+          <section class="panel route-panel" id="settings">
+            <div class="panel-title">
+              <div><svg><use href="#i-sliders"/></svg><strong>路由与规则</strong><span class="version-note">1.14.0</span></div>
+              <div class="page-actions">
+                <button class="soft-button" id="addRouteRuleBtn" type="button"><svg><use href="#i-plus"/></svg>添加规则</button>
+                <button class="soft-button" id="addRuleSetBtn" type="button"><svg><use href="#i-plus"/></svg>添加规则集</button>
+              </div>
+            </div>
+            <div class="form-grid four route-fields">
+              <label class="field"><span>默认出站 <em>final</em></span><select id="routeFinal"></select></label>
+              <label class="field"><span>自动检测接口</span><select id="routeAutoDetect"><option value="auto">自动 · TUN 时启用</option><option value="on">始终启用</option><option value="off">关闭</option></select></label>
+              <label class="field"><span>固定默认接口</span><input id="routeDefaultInterface" placeholder="例如 en0，与自动检测互斥" autocomplete="off" /></label>
+              <label class="field"><span>默认路由标记 <em>Linux</em></span><input id="routeDefaultMark" type="number" min="0" placeholder="不设置" /></label>
+              <label class="field"><span>默认网络策略</span><select id="routeNetworkStrategy"><option value="">系统默认</option><option value="default">Default</option><option value="hybrid">Hybrid</option><option value="fallback">Fallback</option></select></label>
+              <label class="field"><span>默认网络类型</span><input id="routeNetworkType" placeholder="wifi, cellular" autocomplete="off" /></label>
+              <label class="field"><span>默认回退网络类型</span><input id="routeFallbackNetworkType" placeholder="仅 fallback 策略可用" autocomplete="off" /></label>
+              <label class="field"><span>默认回退延迟</span><input id="routeFallbackDelay" placeholder="默认 300ms" autocomplete="off" /></label>
+              <label class="field full"><span>DHCP 租约文件 <em>1.14</em></span><input id="routeDhcpLeaseFiles" placeholder="留空自动探测 dnsmasq、odhcpd、ISC dhcpd、Kea" autocomplete="off" /></label>
+            </div>
+            <div class="settings-list route-switches">
+              <label class="setting-row"><div><strong>进程查找</strong><small>没有进程类规则时也记录进程信息</small></div><input type="checkbox" id="routeFindProcess" /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>邻居解析 <em>1.14</em></strong><small>没有 MAC / 主机名规则时也记录邻居信息</small></div><input type="checkbox" id="routeFindNeighbor" /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>接受 Android VPN 作为上游</strong><small>override_android_vpn · 仅 Android</small></div><input type="checkbox" id="routeOverrideAndroidVpn" /><span class="switch"></span></label>
+            </div>
+
+            <div class="group-heading"><div><strong>路由规则</strong><span>route · bypass · reject · hijack-dns · sniff · resolve</span></div><div class="group-tools"><b id="routeRuleCount">0</b><button class="subscription-tool" id="addRouteRuleInline" type="button" title="添加路由规则"><svg><use href="#i-plus"/></svg><span>添加</span></button></div></div>
+            <div class="endpoint-list sortable-list" id="routeRuleList"></div>
+
+            <div class="group-heading"><div><strong>规则集</strong><span>Inline · Local · Remote · source / binary</span></div><div class="group-tools"><b id="ruleSetCount">0</b><button class="subscription-tool" id="addRuleSetInline" type="button" title="添加规则集"><svg><use href="#i-plus"/></svg><span>添加</span></button></div></div>
+            <div class="endpoint-list sortable-list" id="ruleSetList"></div>
+            <div class="node-foot"><span><i></i><span id="routeSummaryText">0 条规则 · 0 个规则集</span></span><small>按列表顺序匹配，可拖动排序</small></div>
+          </section>
+
+          <section class="panel service-panel" id="services">
+            <div class="panel-title">
+              <div><svg><use href="#i-terminal"/></svg><strong>服务与实验性</strong><span class="version-note">1.14.0</span></div>
+              <div class="page-actions">
+                <button class="soft-button" id="addServiceBtn" type="button"><svg><use href="#i-plus"/></svg>添加服务</button>
+              </div>
+            </div>
+
+            <div class="group-heading"><div><strong>NTP 与证书</strong><span>时间同步与全局证书存储</span></div></div>
+            <div class="form-grid four service-fields">
+              <label class="field"><span>NTP 服务器</span><input id="ntpServer" placeholder="time.apple.com" autocomplete="off" /></label>
+              <label class="field"><span>NTP 端口</span><input id="ntpServerPort" type="number" min="1" max="65535" placeholder="123" /></label>
+              <label class="field"><span>同步周期</span><input id="ntpInterval" placeholder="默认 30m" autocomplete="off" /></label>
+              <label class="field"><span>NTP 出站</span><select id="ntpDetour"></select></label>
+              <label class="field"><span>证书存储</span><select id="certificateStore"><option value="">系统默认</option><option value="system">System</option><option value="mozilla">Mozilla</option><option value="chrome">Chrome</option><option value="none">None</option></select></label>
+              <label class="field"><span>额外证书路径</span><input id="certificatePath" placeholder="/etc/ssl/extra.pem" autocomplete="off" /></label>
+              <label class="field"><span>证书目录</span><input id="certificateDirectoryPath" placeholder="/etc/ssl/certs" autocomplete="off" /></label>
+            </div>
+            <div class="settings-list service-switches">
+              <label class="setting-row"><div><strong>启用 NTP</strong><small>由 sing-box 自行同步时间，QUIC 类协议对时间敏感</small></div><input type="checkbox" id="ntpEnabled" /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>写入系统时间</strong><small>write_to_system · 需要系统权限</small></div><input type="checkbox" id="ntpWriteToSystem" /><span class="switch"></span></label>
+            </div>
+
+            <div class="group-heading"><div><strong>缓存与 API</strong><span>cache_file · clash_api · v2ray_api</span></div></div>
+            <div class="form-grid four service-fields">
+              <label class="field"><span>缓存文件路径</span><input id="cachePath" placeholder="默认 cache.db" autocomplete="off" /></label>
+              <label class="field"><span>缓存 ID</span><input id="cacheId" placeholder="多档案隔离时使用" autocomplete="off" /></label>
+              <label class="field"><span>RDRC 超时</span><input id="cacheRdrcTimeout" placeholder="默认 7d" autocomplete="off" /></label>
+              <label class="field"><span>Clash 控制地址</span><input id="clashController" placeholder="127.0.0.1:9090" autocomplete="off" /></label>
+              <label class="field"><span>Clash Secret</span><input id="clashSecret" type="password" placeholder="监听非本机地址时必填" autocomplete="new-password" /></label>
+              <label class="field"><span>Clash 默认模式</span><select id="clashDefaultMode"><option value="Rule">Rule</option><option value="Global">Global</option><option value="Direct">Direct</option></select></label>
+              <label class="field"><span>面板目录</span><input id="clashExternalUi" placeholder="ui" autocomplete="off" /></label>
+              <label class="field"><span>面板下载地址</span><input id="clashExternalUiDownloadUrl" placeholder="https://..." autocomplete="off" /></label>
+              <label class="field"><span>Clash 允许来源</span><input id="clashAllowOrigin" placeholder="http://127.0.0.1:9090" autocomplete="off" /></label>
+              <label class="field"><span>V2Ray API 监听</span><input id="v2rayListen" placeholder="127.0.0.1:8080" autocomplete="off" /></label>
+              <label class="field"><span>统计入站</span><input id="v2rayStatsInbounds" placeholder="mixed-in" autocomplete="off" /></label>
+              <label class="field"><span>统计出站</span><input id="v2rayStatsOutbounds" placeholder="proxy, direct" autocomplete="off" /></label>
+            </div>
+            <div class="settings-list service-switches">
+              <label class="setting-row"><div><strong>启用缓存文件</strong><small>远程规则集、FakeIP 与选择结果都依赖它</small></div><input type="checkbox" id="cacheEnabled" checked /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>缓存 FakeIP</strong><small>store_fakeip</small></div><input type="checkbox" id="cacheStoreFakeip" /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>缓存 DNS 结果</strong><small>store_dns</small></div><input type="checkbox" id="cacheStoreDns" /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>启用 Clash API</strong><small>允许图形客户端切换模式和节点</small></div><input type="checkbox" id="clashEnabled" checked /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>允许私有网络访问 Clash API</strong><small>access_control_allow_private_network</small></div><input type="checkbox" id="clashAllowPrivateNetwork" /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>启用 V2Ray API</strong><small>提供 gRPC 统计接口</small></div><input type="checkbox" id="v2rayEnabled" /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>启用流量统计</strong><small>v2ray_api.stats</small></div><input type="checkbox" id="v2rayStats" /><span class="switch"></span></label>
+            </div>
+
+            <div class="group-heading"><div><strong>Service</strong><span>api · derp · resolved · ssm-api · ccm · ocm · hysteria-realm · usbip</span></div><div class="group-tools"><b id="serviceCount">0</b><button class="subscription-tool" id="addServiceInline" type="button" title="添加服务"><svg><use href="#i-plus"/></svg><span>添加</span></button></div></div>
+            <div class="endpoint-list sortable-list" id="serviceList"></div>
+            <div class="node-foot"><span><i></i><span id="serviceSummaryText">0 个服务</span></span><small>部分服务需要特定构建标签或系统权限</small></div>
+          </section>
+
+          <section class="panel preview-panel" id="preview">
+            <div class="conflict-block" id="conflictBlock">
+              <div class="conflict-head"><svg><use href="#i-shield"/></svg><strong id="conflictTitle">冲突检查通过</strong><span id="conflictCounts"></span></div>
+              <ul class="conflict-list" id="conflictList"></ul>
+            </div>
+            <div class="panel-title preview-title"><div><svg><use href="#i-code"/></svg><strong>配置预览</strong></div><div class="preview-actions"><span class="code-status"><i></i>JSON 有效</span><button class="icon-action" id="kernelCheckBtn" title="调用本机 sing-box 内核检查"><svg><use href="#i-shield"/></svg></button><button class="icon-action" id="formatBtn" title="格式化"><svg><use href="#i-code"/></svg></button><button class="icon-action" id="copyConfigBtn" title="复制配置"><svg><use href="#i-copy"/></svg></button><button class="icon-action" id="downloadConfigBtn" title="下载配置"><svg><use href="#i-download"/></svg></button></div></div>
+            <textarea id="configOutput" spellcheck="false" aria-label="sing-box JSON 配置"></textarea>
+            <div class="validation-bar" id="validationBar"><svg><use href="#i-check"/></svg><span>结构检查通过</span><small><b id="conflictCount">0</b> 项冲突 · <b id="deprecatedCount">0</b> 个弃用字段 · <b id="summaryInbounds">0</b> 入站 · <b id="summaryNodes">0</b> 节点 · <b id="summaryEndpoints">0</b> 端点 · <b id="summaryRules">0</b> 规则</small></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="modal endpoint-type-modal" id="nodeTypeModal">
+      <div class="modal-head"><h3>添加出站</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+      <p class="modal-intro">选择 sing-box 1.14.0 的出站类型。已在 1.11 弃用并移除的 block、dns 出站不再提供，请改用规则动作。</p>
+      <div class="endpoint-type-list inbound-type-list" id="nodeTypeList"></div>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="nodeModal">
+      <form method="dialog" id="nodeForm">
+        <div class="modal-head"><div><h3 id="nodeModalTitle">添加出站</h3><small id="nodeModalVersion">sing-box 1.14.0</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <input type="hidden" id="nodeTypeField" />
+        <input type="hidden" id="editNodeId" />
+        <p class="modal-intro" id="nodeIntro"></p>
+        <div id="nodeFields"></div>
+        <div class="modal-error" id="nodeFormError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default" id="saveNodeBtn">保存出站</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="groupModal">
+      <form method="dialog" id="groupForm">
+        <div class="modal-head"><div><h3 id="groupModalTitle">添加出站组</h3><small>sing-box 1.14.0 · Selector / URLTest</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <input type="hidden" id="groupId" />
+        <p class="modal-intro">出站组用于在客户端里切换节点。成员可以自动包含全部节点，也可以手动列出。</p>
+        <div id="groupFields"></div>
+        <div class="modal-error" id="groupFormError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default">保存出站组</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="tailscaleModal">
+      <form method="dialog" id="tailscaleForm">
+        <div class="modal-head"><h3 id="tailscaleModalTitle">添加 Tailscale 端点</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <input type="hidden" id="editEndpointId" />
+        <p class="modal-intro">Tailscale 是 sing-box 1.12+ 的顶层 Endpoint。认证密钥可留空，首次启动时由内核输出登录地址。</p>
+
+        <div class="modal-section section-first">基础</div>
+        <div class="form-grid two modal-fields compact-section">
+          <label class="field"><span>端点标签</span><input id="tailscaleTag" required placeholder="tailscale" autocomplete="off" /></label>
+          <label class="field"><span>设备名称</span><input id="tailscaleHostname" placeholder="默认使用系统设备名" autocomplete="off" /></label>
+          <label class="field"><span>状态目录</span><input id="tailscaleStateDirectory" placeholder="tailscale" autocomplete="off" /></label>
+          <label class="field"><span>控制服务器</span><input id="tailscaleControlUrl" type="url" placeholder="https://controlplane.tailscale.com" autocomplete="off" /></label>
+          <label class="field full"><span>Auth Key</span><input id="tailscaleAuthKey" type="password" placeholder="可选；已有状态或交互登录时不需要" autocomplete="new-password" /></label>
+          <label class="field"><span>UDP NAT 超时</span><input id="tailscaleUdpTimeout" placeholder="默认 5m" autocomplete="off" /></label>
+          <label class="field"><span>WireGuard 监听端口 <em>1.14</em></span><input id="tailscaleListenPort" type="number" min="1" max="65535" placeholder="自动选择" /></label>
+        </div>
+        <div class="settings-list modal-switches">
+          <label class="setting-row"><div><strong>临时节点</strong><small>注册为 Ephemeral 节点</small></div><input type="checkbox" id="tailscaleEphemeral" /><span class="switch"></span></label>
+          <label class="setting-row"><div><strong>接受远端路由</strong><small>采用其他节点发布的子网路由</small></div><input type="checkbox" id="tailscaleAcceptRoutes" /><span class="switch"></span></label>
+        </div>
+
+        <div class="modal-section">路由与发布</div>
+        <div class="form-grid two modal-fields compact-section">
+          <label class="field"><span>出口节点</span><input id="tailscaleExitNode" placeholder="设备名或 Tailscale IP" autocomplete="off" /></label>
+          <label class="field"><span>发布标签</span><input id="tailscaleAdvertiseTags" placeholder="tag:server, tag:proxy" autocomplete="off" /></label>
+          <label class="field full"><span>发布子网路由</span><textarea id="tailscaleAdvertiseRoutes" rows="2" placeholder="192.168.1.0/24, 10.10.0.0/16"></textarea></label>
+        </div>
+        <div class="settings-list modal-switches">
+          <label class="setting-row dependent-exit"><div><strong>出口节点保留局域网访问</strong><small>仅设置出口节点后生效</small></div><input type="checkbox" id="tailscaleExitNodeAllowLan" /><span class="switch"></span></label>
+          <label class="setting-row"><div><strong>发布为出口节点</strong><small>向 Tailnet 公布默认路由</small></div><input type="checkbox" id="tailscaleAdvertiseExitNode" /><span class="switch"></span></label>
+        </div>
+
+        <div class="modal-section">MagicDNS</div>
+        <div class="settings-list modal-switches">
+          <label class="setting-row"><div><strong>添加 Tailscale DNS</strong><small>自动生成 DNS Server 与 preferred_by 规则</small></div><input type="checkbox" id="tailscaleMagicDns" /><span class="switch"></span></label>
+          <label class="setting-row magicdns-dependent"><div><strong>接受默认解析器</strong><small>非 Tailnet 查询可回退到默认解析器</small></div><input type="checkbox" id="tailscaleAcceptDefaultResolvers" /><span class="switch"></span></label>
+          <label class="setting-row magicdns-dependent"><div><strong>接受搜索域 <em>1.14</em></strong><small>对单标签设备名依次尝试 Tailnet 搜索域</small></div><input type="checkbox" id="tailscaleAcceptSearchDomain" /><span class="switch"></span></label>
+        </div>
+
+        <div class="modal-section">系统接口与中继</div>
+        <div class="settings-list modal-switches">
+          <label class="setting-row"><div><strong>创建系统接口</strong><small>由 Tailscale Endpoint 创建独立 TUN 接口</small></div><input type="checkbox" id="tailscaleSystemInterface" /><span class="switch"></span></label>
+        </div>
+        <div class="form-grid two modal-fields compact-section system-interface-dependent">
+          <label class="field"><span>接口名称</span><input id="tailscaleSystemInterfaceName" placeholder="tailscale / utun" autocomplete="off" /></label>
+          <label class="field"><span>接口 MTU</span><input id="tailscaleSystemInterfaceMtu" type="number" min="576" placeholder="使用 Tailscale 默认值" /></label>
+        </div>
+        <div class="form-grid two modal-fields compact-section">
+          <label class="field"><span>中继服务器端口</span><input id="tailscaleRelayServerPort" type="number" min="1" max="65535" placeholder="不启用" /></label>
+          <label class="field"><span>中继静态端点</span><input id="tailscaleRelayStaticEndpoints" placeholder="203.0.113.10:3478, [::1]:3478" autocomplete="off" /></label>
+        </div>
+
+        <div class="modal-section">Tailscale SSH 与 Taildrop <span class="new-badge">1.14</span></div>
+        <div class="settings-list modal-switches">
+          <label class="setting-row"><div><strong>启用 Tailscale SSH</strong><small>在 Tailnet 的 22 端口提供受 ACL 控制的 SSH</small></div><input type="checkbox" id="tailscaleSshServer" /><span class="switch"></span></label>
+          <label class="setting-row ssh-dependent"><div><strong>禁用 PTY</strong><small>拒绝分配交互式终端</small></div><input type="checkbox" id="tailscaleSshDisablePty" /><span class="switch"></span></label>
+          <label class="setting-row ssh-dependent"><div><strong>禁用 SFTP</strong><small>拒绝 SFTP 子系统</small></div><input type="checkbox" id="tailscaleSshDisableSftp" /><span class="switch"></span></label>
+          <label class="setting-row ssh-dependent"><div><strong>禁用端口转发</strong><small>拒绝本地、远端与 Agent 转发</small></div><input type="checkbox" id="tailscaleSshDisableForwarding" /><span class="switch"></span></label>
+        </div>
+        <div class="form-grid modal-fields compact-section">
+          <label class="field"><span>Taildrop 接收目录</span><input id="tailscaleTaildropDirectory" placeholder="默认 Taildrop" autocomplete="off" /></label>
+        </div>
+
+        <details class="advanced-fields">
+          <summary><span><strong>高级拨号字段</strong><small>仅控制端点连接控制平面的方式</small></span><svg><use href="#i-chevron"/></svg></summary>
+          <div class="advanced-body">
+            <div class="form-grid two modal-fields">
+              <label class="field"><span>上游出站 detour</span><input id="tailscaleDetour" placeholder="例如 direct" autocomplete="off" /></label>
+              <label class="field"><span>网络命名空间 netns <em>1.14</em></span><input id="tailscaleNetns" placeholder="名称、路径或 namespace 标签" autocomplete="off" /></label>
+              <label class="field"><span>绑定接口</span><input id="tailscaleBindInterface" placeholder="例如 en0" autocomplete="off" /></label>
+              <label class="field"><span>路由标记 <em>Linux</em></span><input id="tailscaleRoutingMark" placeholder="1234 或 0x1234" autocomplete="off" /></label>
+              <label class="field"><span>IPv4 绑定地址</span><input id="tailscaleInet4BindAddress" placeholder="192.0.2.10" autocomplete="off" /></label>
+              <label class="field"><span>IPv6 绑定地址</span><input id="tailscaleInet6BindAddress" placeholder="2001:db8::10" autocomplete="off" /></label>
+              <label class="field"><span>连接超时</span><input id="tailscaleConnectTimeout" placeholder="例如 10s" autocomplete="off" /></label>
+              <label class="field"><span>TCP Keep Alive</span><input id="tailscaleTcpKeepAlive" placeholder="默认 5m" autocomplete="off" /></label>
+              <label class="field"><span>Keep Alive 间隔</span><input id="tailscaleTcpKeepAliveInterval" placeholder="默认 75s" autocomplete="off" /></label>
+              <label class="field"><span>UDP 分片</span><select id="tailscaleUdpFragment"><option value="">使用内核默认值</option><option value="true">启用</option><option value="false">显式关闭</option></select></label>
+              <label class="field"><span>域名解析器</span><input id="tailscaleDomainResolver" placeholder="默认 route.default_domain_resolver" autocomplete="off" /></label>
+              <label class="field"><span>网络策略</span><select id="tailscaleNetworkStrategy"><option value="">系统默认</option><option value="default">Default</option><option value="hybrid">Hybrid</option><option value="fallback">Fallback</option></select></label>
+              <label class="field"><span>首选网络类型</span><input id="tailscaleNetworkType" placeholder="wifi, cellular" autocomplete="off" /></label>
+              <label class="field"><span>回退网络类型</span><input id="tailscaleFallbackNetworkType" placeholder="ethernet, other" autocomplete="off" /></label>
+              <label class="field"><span>回退延迟</span><input id="tailscaleFallbackDelay" placeholder="默认 300ms" autocomplete="off" /></label>
+            </div>
+            <div class="settings-list modal-switches advanced-switches">
+              <label class="setting-row"><div><strong>绑定地址不占用端口</strong><small>Linux only · bind_address_no_port</small></div><input type="checkbox" id="tailscaleBindAddressNoPort" /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>复用监听地址</strong><small>reuse_addr</small></div><input type="checkbox" id="tailscaleReuseAddr" /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>TCP Fast Open</strong><small>tcp_fast_open</small></div><input type="checkbox" id="tailscaleTcpFastOpen" /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>TCP Multi Path</strong><small>tcp_multi_path</small></div><input type="checkbox" id="tailscaleTcpMultiPath" /><span class="switch"></span></label>
+              <label class="setting-row"><div><strong>禁用 TCP Keep Alive</strong><small>disable_tcp_keep_alive</small></div><input type="checkbox" id="tailscaleDisableTcpKeepAlive" /><span class="switch"></span></label>
+            </div>
+            <p class="field-footnote">未提供已在 1.12 弃用并于 1.14 移除的 <code>domain_strategy</code>。网络策略字段主要用于启用自动接口检测的 Android / Apple 图形客户端。</p>
+          </div>
+        </details>
+
+        <div class="modal-error" id="tailscaleFormError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default" id="saveTailscaleBtn">保存端点</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal endpoint-type-modal" id="endpointTypeModal">
+      <div class="modal-head"><h3>添加端点</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+      <p class="modal-intro">选择 sing-box 1.14.0 顶层 Endpoint 类型。</p>
+      <div class="endpoint-type-list">
+        <button type="button" data-endpoint-type="wireguard"><span class="endpoint-type-icon"><svg><use href="#i-network"/></svg></span><span><strong>WireGuard</strong><small>现代组网端点 · 1.11+</small></span><svg><use href="#i-chevron"/></svg></button>
+        <button type="button" data-endpoint-type="tailscale"><span class="endpoint-type-icon"><svg><use href="#i-network"/></svg></span><span><strong>Tailscale</strong><small>Tailnet、MagicDNS、SSH 与 Taildrop</small></span><svg><use href="#i-chevron"/></svg></button>
+        <button type="button" data-endpoint-type="openconnect"><span class="endpoint-type-icon"><svg><use href="#i-network"/></svg></span><span><strong>OpenConnect Client</strong><small>AnyConnect、GlobalProtect、Fortinet 等 · 1.14</small></span><svg><use href="#i-chevron"/></svg></button>
+        <button type="button" data-endpoint-type="openvpn-client"><span class="endpoint-type-icon"><svg><use href="#i-network"/></svg></span><span><strong>OpenVPN Client</strong><small>TLS 客户端 · 1.14</small></span><svg><use href="#i-chevron"/></svg></button>
+        <button type="button" data-endpoint-type="openvpn-server"><span class="endpoint-type-icon"><svg><use href="#i-network"/></svg></span><span><strong>OpenVPN Server</strong><small>TLS 服务端 · 1.14</small></span><svg><use href="#i-chevron"/></svg></button>
+      </div>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="standardEndpointModal">
+      <form method="dialog" id="standardEndpointForm">
+        <div class="modal-head"><div><h3 id="standardEndpointModalTitle">添加端点</h3><small id="standardEndpointVersion">sing-box 1.14.0</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <input type="hidden" id="standardEndpointType" />
+        <input type="hidden" id="standardEndpointId" />
+        <p class="modal-intro" id="standardEndpointIntro"></p>
+        <div id="standardEndpointFields"></div>
+        <div class="modal-error" id="standardEndpointFormError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default">保存端点</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal endpoint-type-modal" id="dnsServerTypeModal">
+      <div class="modal-head"><h3>添加 DNS Server</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+      <p class="modal-intro">选择 sing-box 1.14.0 的 DNS Server 类型；不会生成旧版 DNS Server 格式或旧 DNS 特殊出站。</p>
+      <div class="endpoint-type-list dns-type-list" id="dnsServerTypeList"></div>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="dnsServerModal">
+      <form method="dialog" id="dnsServerForm">
+        <div class="modal-head"><div><h3 id="dnsServerModalTitle">添加 DNS Server</h3><small id="dnsServerModalVersion">sing-box 1.14.0</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <input type="hidden" id="dnsServerType" />
+        <input type="hidden" id="dnsServerId" />
+        <p class="modal-intro" id="dnsServerIntro"></p>
+        <div id="dnsServerFields"></div>
+        <div class="modal-error" id="dnsServerFormError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default">保存 Server</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="dnsRuleModal">
+      <form method="dialog" id="dnsRuleForm">
+        <div class="modal-head"><div><h3 id="dnsRuleModalTitle">添加 DNS 规则</h3><small>sing-box 1.14.0 · DNS Rule</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <input type="hidden" id="dnsRuleId" />
+        <p class="modal-intro">匹配条件之间是「与」关系，留空即不限制。响应匹配字段需要先由 evaluate 规则求值。</p>
+        <div id="dnsRuleFields"></div>
+        <div class="modal-error" id="dnsRuleFormError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default">保存规则</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal endpoint-type-modal" id="serviceTypeModal">
+      <div class="modal-head"><h3>添加服务</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+      <p class="modal-intro">选择 sing-box 1.14.0 的顶层 Service 类型。部分服务需要对应构建标签或系统权限。</p>
+      <div class="endpoint-type-list inbound-type-list" id="serviceTypeList"></div>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="serviceModal">
+      <form method="dialog" id="serviceForm">
+        <div class="modal-head"><div><h3 id="serviceModalTitle">添加服务</h3><small id="serviceModalVersion">sing-box 1.14.0</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <input type="hidden" id="serviceType" />
+        <input type="hidden" id="serviceId" />
+        <p class="modal-intro" id="serviceIntro"></p>
+        <div id="serviceFields"></div>
+        <div class="modal-error" id="serviceFormError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default">保存服务</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal endpoint-type-modal" id="inboundTypeModal">
+      <div class="modal-head"><h3>添加入站</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+      <p class="modal-intro">选择 sing-box 1.14.0 的入站类型。旧的 sniff、domain_strategy 等入站字段已由规则动作取代，不会生成。</p>
+      <div class="endpoint-type-list inbound-type-list" id="inboundTypeList"></div>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="inboundModal">
+      <form method="dialog" id="inboundForm">
+        <div class="modal-head"><div><h3 id="inboundModalTitle">添加入站</h3><small id="inboundModalVersion">sing-box 1.14.0</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <input type="hidden" id="inboundType" />
+        <input type="hidden" id="inboundId" />
+        <p class="modal-intro" id="inboundIntro"></p>
+        <div id="inboundFields"></div>
+        <div class="modal-error" id="inboundFormError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default">保存入站</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="routeRuleModal">
+      <form method="dialog" id="routeRuleForm">
+        <div class="modal-head"><div><h3 id="routeRuleModalTitle">添加路由规则</h3><small>sing-box 1.14.0 · Route Rule</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <input type="hidden" id="routeRuleId" />
+        <p class="modal-intro">匹配条件之间是「与」关系，留空即不限制。不提供已移除的 GeoIP / Geosite 与已弃用的顶层 outbound 写法。</p>
+        <div id="routeRuleFields"></div>
+        <div class="modal-error" id="routeRuleFormError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default">保存规则</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal endpoint-type-modal" id="ruleSetTypeModal">
+      <div class="modal-head"><h3>添加规则集</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+      <p class="modal-intro">选择规则集来源。AdGuard DNS Filter 需要先用 <code>sing-box rule-set convert --type adguard</code> 转成 .srs，再按 binary 格式引用。</p>
+      <div class="endpoint-type-list" id="ruleSetTypeList"></div>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="ruleSetModal">
+      <form method="dialog" id="ruleSetForm">
+        <div class="modal-head"><div><h3 id="ruleSetModalTitle">添加规则集</h3><small id="ruleSetModalVersion">sing-box 1.14.0</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <input type="hidden" id="ruleSetType" />
+        <input type="hidden" id="ruleSetId" />
+        <p class="modal-intro" id="ruleSetIntro"></p>
+        <div id="ruleSetFields"></div>
+        <div class="headless-block hidden" id="headlessBlock">
+          <div class="modal-section">Headless 规则项 <span class="new-badge">inline</span></div>
+          <div class="headless-list" id="headlessRuleList"></div>
+          <div class="headless-tools"><button type="button" class="secondary-button" id="addHeadlessRuleBtn">添加规则项</button></div>
+        </div>
+        <div class="modal-error" id="ruleSetFormError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default">保存规则集</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="importConfigModal">
+      <form method="dialog" id="importConfigForm">
+        <div class="modal-head"><div><h3>导入 sing-box 配置</h3><small>反序列化为各模块的表单状态</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <p class="modal-intro">粘贴或选择一份完整的 sing-box JSON 配置。界面没有建模的字段会保留在对应条目的「附加参数」里，已弃用字段会被列出并忽略。</p>
+        <div class="form-grid modal-fields">
+          <label class="field full"><span>选择配置文件</span><input type="file" id="importConfigFile" accept=".json,application/json" /></label>
+          <label class="field full json-field"><span>配置 JSON</span><textarea id="importConfigText" rows="12" placeholder='{"log": {"level": "info"}, "inbounds": [], "outbounds": []}'></textarea></label>
+        </div>
+        <div class="import-report hidden" id="importReport"></div>
+        <div class="modal-error" id="importConfigError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default" id="applyImportBtn">导入并覆盖</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="tidyModal">
+      <form method="dialog" id="tidyForm">
+        <div class="modal-head"><div><h3>整理节点</h3><small>去重 · 过滤 · 批量重命名</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <p class="modal-intro">整理只作用于当前节点列表，可先预览再应用。</p>
+        <div class="form-grid two modal-fields">
+          <label class="field"><span>只保留包含</span><input id="tidyInclude" placeholder="HK, JP（留空不过滤）" autocomplete="off" /></label>
+          <label class="field"><span>排除包含</span><input id="tidyExclude" placeholder="试用, 官网, 剩余" autocomplete="off" /></label>
+          <label class="field"><span>名称前缀</span><input id="tidyPrefix" placeholder="[A] " autocomplete="off" /></label>
+          <label class="field"><span>名称后缀</span><input id="tidySuffix" placeholder=" · 主力" autocomplete="off" /></label>
+          <label class="field"><span>查找</span><input id="tidySearch" placeholder="HK" autocomplete="off" /></label>
+          <label class="field"><span>替换为</span><input id="tidyReplace" placeholder="香港" autocomplete="off" /></label>
+        </div>
+        <div class="settings-list modal-switches">
+          <label class="setting-row"><div><strong>删除重复节点</strong><small>协议、服务器、端口与凭据都相同时视为重复</small></div><input type="checkbox" id="tidyDedupe" checked /><span class="switch"></span></label>
+        </div>
+        <div class="import-report" id="tidyPreview"></div>
+        <div class="modal-error" id="tidyError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button type="button" class="secondary-button" id="tidyPreviewBtn">预览</button><button class="primary-button" value="default">应用</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="exportLinksModal">
+      <div class="modal-head"><div><h3>导出分享链接</h3><small id="exportLinksMeta"></small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+      <p class="modal-intro">下面的链接包含节点凭据，请按密码保管。</p>
+      <label class="field full json-field" style="margin: 0 36px 20px;"><span>分享链接</span><textarea id="exportLinksText" rows="10" readonly></textarea></label>
+      <div class="privacy-note" style="margin: 0 36px;"><svg><use href="#i-shield"/></svg><span id="exportLinksSkipped">全部节点均可导出</span></div>
+      <div class="modal-actions"><button type="button" class="secondary-button dialog-close">关闭</button><button type="button" class="primary-button" id="copyLinksBtn">复制全部</button></div>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="backupModal">
+      <form method="dialog" id="backupForm">
+        <div class="modal-head"><div><h3>备份与恢复</h3><small>导出当前全部配置状态</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <p class="modal-intro">备份文件包含节点凭据，请妥善保管。恢复会覆盖当前浏览器里的全部配置。</p>
+        <div class="form-grid modal-fields">
+          <label class="field full"><span>选择备份文件</span><input type="file" id="backupFile" accept=".json,application/json" /></label>
+          <label class="field full json-field"><span>备份内容</span><textarea id="backupText" rows="10" spellcheck="false"></textarea></label>
+        </div>
+        <div class="modal-error" id="backupError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button hidden" id="restoreSnapshotBtn">回到自动备份</button><button type="button" class="secondary-button dialog-close">取消</button><button type="button" class="secondary-button" id="downloadBackupBtn">下载备份</button><button class="primary-button" value="default" id="restoreBackupBtn">恢复</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal import-modal" id="importModal">
+      <form method="dialog" id="importForm">
+        <div class="modal-head"><h3>导入分享链接</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <p class="modal-intro">每行一个链接，支持 VLESS、Trojan、Shadowsocks、Hysteria 2、TUIC、VMess 与 AnyTLS。</p>
+        <label class="field import-field"><span>分享链接</span><textarea id="importText" rows="9" placeholder="vless://...&#10;hysteria2://...&#10;ss://..."></textarea></label>
+        <div class="modal-error" id="importError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default" id="parseImportBtn">导入</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal remote-subscription-modal" id="remoteSubscriptionModal">
+      <form method="dialog" id="remoteSubscriptionForm">
+        <div class="modal-head"><h3>添加节点订阅</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <p class="modal-intro">读取 sing-box JSON，或包含 VLESS、Trojan、Shadowsocks、Hysteria 2、TUIC、VMess、AnyTLS 链接的明文/Base64 订阅。</p>
+        <div class="form-grid modal-fields subscription-fields">
+          <label class="field"><span>订阅名称</span><input id="remoteSubscriptionName" placeholder="可选，默认使用网站名称" autocomplete="off" /></label>
+          <label class="field"><span>订阅地址</span><input id="remoteSubscriptionUrl" type="url" required placeholder="https://example.com/subscription" autocomplete="off" /></label>
+        </div>
+        <div class="privacy-note subscription-privacy"><svg><use href="#i-shield"/></svg>订阅地址只保存在当前浏览器；为安全起见，不读取本机或局域网地址。</div>
+        <div class="modal-error" id="remoteSubscriptionError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default" id="fetchSubscriptionBtn">读取并添加</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal subscription-modal" id="subscriptionModal">
+      <div class="modal-head"><h3>订阅</h3><button class="modal-icon" id="closeSubscription" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+      <div class="subscription-body">
+        <div class="success-icon"><svg><use href="#i-check"/></svg></div><h4>配置已生成</h4><p>将下面的地址作为远程配置导入 sing-box。</p>
+        <label class="field"><span>公开访问地址</span><input id="publicBaseUrl" placeholder="https://your-domain.example" /></label>
+        <div class="form-grid two subscription-security">
+          <label class="field"><span>访问 token</span><input id="subscriptionToken" placeholder="与 SUBSCRIPTION_TOKEN 一致" autocomplete="off" /></label>
+          <label class="field"><span>有效期</span><select id="subscriptionExpiry"><option value="">永久</option><option value="1">1 天</option><option value="7">7 天</option><option value="30">30 天</option></select></label>
+        </div>
+        <label class="field"><span>订阅链接</span><div class="copy-field"><input id="subscriptionUrl" readonly /><button id="copySubscriptionBtn" class="secondary-button">复制</button></div></label>
+        <div class="link-warning hidden" id="linkWarning">链接较长，节点较多时建议接入持久化存储。</div>
+        <div class="privacy-note"><svg><use href="#i-shield"/></svg>订阅地址包含节点凭据，请像密码一样保管。</div>
+      </div>
+      <div class="modal-actions"><a class="secondary-button" id="openSubscriptionBtn" href="#" target="_blank" rel="noreferrer">预览</a><a class="primary-button" id="importClientBtn" href="#">导入客户端</a></div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status"><svg><use href="#i-check"/></svg><span>已复制</span></div>
+    <script type="module" src="/app.js?v=16"></script>
+  </body>
+</html>
