@@ -1424,13 +1424,48 @@ function buildSubscriptionUrl() {
   return endpoint.toString();
 }
 
+const subscriptionServerStatus = new Map();
+
+async function probeSubscriptionServer(base) {
+  if (subscriptionServerStatus.has(base)) return subscriptionServerStatus.get(base);
+  const pending = fetch(new URL("api/status", base), { cache: "no-store", signal: AbortSignal.timeout(5000) })
+    .then((response) => (response.ok ? response.json() : null))
+    .catch(() => null);
+  subscriptionServerStatus.set(base, pending);
+  return pending;
+}
+
+function subscriptionBase() {
+  let base = $("#publicBaseUrl").value.trim() || defaultPublicBase();
+  if (!/^https?:\/\//i.test(base)) base = `https://${base}`;
+  return base.endsWith("/") ? base : `${base}/`;
+}
+
+async function updateSubscriptionGuard() {
+  const base = subscriptionBase();
+  const status = await probeSubscriptionServer(base);
+  if (base !== subscriptionBase()) return;
+  const token = $("#subscriptionToken").value.trim();
+  const guard = $("#subscriptionGuard");
+  const importButton = $("#importClientBtn");
+  const missingToken = Boolean(status?.tokenRequired) && !token;
+  guard.classList.toggle("hidden", !missingToken && status !== null);
+  importButton.classList.toggle("is-disabled", missingToken);
+  importButton.setAttribute("aria-disabled", String(missingToken));
+  if (missingToken) {
+    guard.textContent = "该服务器启用了 SUBSCRIPTION_TOKEN，请填写相同的访问 token，否则客户端导入会收到 401。";
+  } else if (status === null) {
+    guard.textContent = "无法探测该地址上的订阅服务，请确认公开访问地址正确且服务已启动。";
+  }
+}
+
 function updateSubscriptionFields() {
   try {
     const url = buildSubscriptionUrl();
     $("#subscriptionUrl").value = url;
     $("#openSubscriptionBtn").href = url;
     $("#importClientBtn").href = `sing-box://import-remote-profile?url=${encodeURIComponent(url)}#${encodeURIComponent(state.settings.profileName || "Sing Profile")}`;
-
+    updateSubscriptionGuard();
   } catch (error) {
     $("#subscriptionUrl").value = "";
     showToast(error.message, true);
@@ -1720,6 +1755,13 @@ $("#publicBaseUrl").addEventListener("input", updateSubscriptionFields);
 $("#subscriptionToken").addEventListener("input", updateSubscriptionFields);
 $("#subscriptionExpiry").addEventListener("change", updateSubscriptionFields);
 $("#copySubscriptionBtn").addEventListener("click", () => copyText($("#subscriptionUrl").value));
+$("#importClientBtn").addEventListener("click", (event) => {
+  if (event.currentTarget.classList.contains("is-disabled")) {
+    event.preventDefault();
+    $("#subscriptionToken").focus();
+    showToast("该服务器要求访问 token，请先填写", true);
+  }
+});
 $("#closeSubscription").addEventListener("click", () => $("#subscriptionModal").close());
 
 $("#resetBtn").addEventListener("click", () => {

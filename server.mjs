@@ -219,12 +219,21 @@ const server = createServer(async (req, res) => {
     return send(res, 200, "ok\n", { "cache-control": "no-store" });
   }
 
+  // 供生成页探测目标服务器的要求（不含任何秘密，允许跨域读取）
+  if (requestUrl.pathname === "/api/status") {
+    return send(res, 200, JSON.stringify({ tokenRequired: Boolean(subscriptionToken), rateLimit: { windowMs: rateLimitWindowMs, max: rateLimitMax } }) + "\n", {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "access-control-allow-origin": "*"
+    });
+  }
+
   if (requestUrl.pathname === "/subscription") {
     if (rateLimited(clientKey(req))) {
       return send(res, 429, "Too many requests\n", { "retry-after": String(Math.ceil(rateLimitWindowMs / 1000)) });
     }
     if (subscriptionToken && !timingSafeEqual(requestUrl.searchParams.get("token") || "", subscriptionToken)) {
-      return send(res, 401, "Unauthorized\n", { "cache-control": "no-store" });
+      return send(res, 401, "Unauthorized: this server requires a subscription token. Regenerate the link with the same token as SUBSCRIPTION_TOKEN.\n", { "cache-control": "no-store" });
     }
     const expires = Number(requestUrl.searchParams.get("expires") || 0);
     if (expires && Number.isFinite(expires) && Date.now() / 1000 > expires) {

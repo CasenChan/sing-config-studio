@@ -262,6 +262,8 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width:
 #exportLinksText, #backupText, #importConfigText { font-family: var(--mono); font-size: 11px; }
 .subscription-security { margin-top: 4px; gap: 12px; }
 .subscription-body .link-warning { color: #8a6d1f; }
+.subscription-body .link-guard { color: var(--danger); }
+.modal-actions .is-disabled { opacity: .45; cursor: not-allowed; }
 .subscription-source.has-error { border-color: #e7bcb6; background: #fff7f6; }
 .subscription-source-meta.is-error { color: var(--danger); }
 
