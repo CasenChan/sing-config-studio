@@ -114,3 +114,14 @@ assert.equal(hasTunInbound([minimal.mixed, minimal.tun]), true);
 assert.equal(hasTunInbound([minimal.mixed, { ...minimal.tun, enabled: false }]), false);
 
 console.log("inbound module tests passed");
+
+// REALITY 服务端：不需要自己的证书，但必须有握手目标与私钥
+const realityIn = inb({ type: "anytls", tag: "anytls-reality", listenPort: "443", usersJson: '[{"password":"p"}]', tlsEnabled: true, tlsServerName: "www.microsoft.com", realityEnabled: true, realityHandshakeServer: "www.microsoft.com", realityHandshakePort: "443", realityPrivateKey: "priv", realityShortId: "0123456789abcdef, abcd" });
+assert.equal(validateInbound(realityIn, {}), "");
+assert.deepEqual(buildInbound(realityIn).tls.reality, { enabled: true, handshake: { server: "www.microsoft.com", server_port: 443 }, private_key: "priv", short_id: ["0123456789abcdef", "abcd"] });
+assert.equal(buildInbound(realityIn).tls.certificate_path, undefined);
+assert.match(validateInbound(inb({ ...realityIn, realityPrivateKey: "" }), {}), /私钥/);
+assert.match(validateInbound(inb({ ...realityIn, realityHandshakeServer: "" }), {}), /握手目标/);
+assert.match(validateInbound(inb({ ...realityIn, realityShortId: "abc" }), {}), /Short ID/);
+assert.match(validateInbound(inb({ type: "hysteria2", tag: "h", listenPort: "443", usersJson: '[{"password":"p"}]', tlsEnabled: true, realityEnabled: true, realityHandshakeServer: "x", realityPrivateKey: "k" }), {}), /不支持 REALITY/);
+console.log("inbound reality test passed");

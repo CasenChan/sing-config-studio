@@ -178,7 +178,14 @@ function importTls(source, target) {
   if (tls.reality?.enabled) {
     target.reality = true;
     target.publicKey = tls.reality.public_key || "";
-    target.shortId = tls.reality.short_id || "";
+    target.shortId = Array.isArray(tls.reality.short_id) ? tls.reality.short_id.join(", ") : tls.reality.short_id || "";
+    // 服务端 REALITY 字段
+    target.realityEnabled = true;
+    target.realityHandshakeServer = tls.reality.handshake?.server || "";
+    target.realityHandshakePort = String(tls.reality.handshake?.server_port || 443);
+    target.realityPrivateKey = tls.reality.private_key || "";
+    target.realityShortId = target.shortId;
+    target.realityMaxTimeDifference = tls.reality.max_time_difference || "";
   }
   if (tls.ech?.enabled) {
     target.echEnabled = true;

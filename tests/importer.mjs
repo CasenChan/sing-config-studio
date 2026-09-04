@@ -138,4 +138,9 @@ const empty = importConfig({});
 assert.equal(empty.counts.inbounds, 0);
 assert.ok(empty.notices.some((item) => item.message.includes("没有入站")));
 
+// 服务端 REALITY 往返
+const realityIn = { type: "anytls", tag: "at", listen_port: 443, users: [{ password: "p" }], tls: { enabled: true, server_name: "www.microsoft.com", reality: { enabled: true, handshake: { server: "www.microsoft.com", server_port: 443 }, private_key: "priv", short_id: ["abcd"] } } };
+const realityState = importConfig({ inbounds: [realityIn], outbounds: [{ type: "direct", tag: "direct" }], dns: { servers: [{ type: "local", tag: "l" }] } }).state;
+assert.deepEqual(buildInbound(realityState.inbounds[0]), realityIn);
+
 console.log("importer round-trip tests passed");

@@ -61,7 +61,7 @@ assert.deepEqual(realityBuilt.tls.utls, { enabled: true, fingerprint: "chrome" }
 assert.equal(realityBuilt.flow, "xtls-rprx-vision");
 assert.match(validateOutbound({ ...reality, echEnabled: true }, {}), /REALITY 与 ECH/);
 assert.match(validateOutbound({ ...reality, tls: false }, {}), /REALITY 需要同时启用 TLS/);
-assert.match(validateOutbound(ob({ type: "trojan", tag: "t", password: "p", tls: true, reality: true, publicKey: "k" }), {}), /不支持 REALITY/);
+assert.match(validateOutbound(ob({ type: "shadowtls", tag: "t", password: "p", tls: true, reality: true, publicKey: "k" }), {}), /不支持 REALITY/);
 
 const ech = ob({ type: "vmess", tag: "ech", uuid, tls: true, echEnabled: true, echConfig: "-----BEGIN ECH CONFIGS-----\nabc\n-----END ECH CONFIGS-----" });
 assert.equal(validateOutbound(ech, {}), "");
@@ -137,3 +137,13 @@ outboundModule.extendConfig(emptyConfig, { nodes: [], groups: [urltest] });
 assert.deepEqual(emptyConfig.outbounds.map((item) => item.tag), ["direct"]);
 
 console.log("outbound module tests passed");
+
+// REALITY：内核的 TLS 层是协议无关的，TCP 类 TLS 出站都可用；QUIC 类不可用
+const anytlsReality = ob({ type: "anytls", tag: "anytls-reality", password: "p", tls: true, sni: "www.microsoft.com", reality: true, publicKey: "pk", shortId: "abcd" });
+assert.equal(validateOutbound(anytlsReality, {}), "");
+assert.deepEqual(buildOutbound(anytlsReality).tls.reality, { enabled: true, public_key: "pk", short_id: "abcd" });
+assert.equal(buildOutbound(anytlsReality).flow, undefined, "flow 只属于 VLESS");
+assert.equal(validateOutbound(ob({ type: "trojan", tag: "t", password: "p", tls: true, reality: true, publicKey: "pk" }), {}), "");
+assert.match(validateOutbound(ob({ type: "hysteria2", tag: "h", password: "p", tls: true, reality: true, publicKey: "pk" }), {}), /QUIC/);
+assert.match(validateOutbound(ob({ type: "tuic", tag: "t", uuid, password: "p", tls: true, reality: true, publicKey: "pk" }), {}), /QUIC/);
+console.log("outbound reality coverage test passed");

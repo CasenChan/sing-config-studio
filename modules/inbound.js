@@ -18,23 +18,23 @@ import {
 } from "./shared.js";
 
 export const INBOUND_TYPE_META = Object.freeze({
-  mixed: { label: "Mixed", note: "HTTP + SOCKS 混合代理", prefix: "mixed-in", listen: true, users: "auth", tls: true, systemProxy: true, group: "local" },
+  mixed: { label: "Mixed", note: "HTTP + SOCKS 混合代理", prefix: "mixed-in", listen: true, users: "auth", tls: true, reality: true, systemProxy: true, group: "local" },
   socks: { label: "SOCKS", note: "SOCKS5 代理", prefix: "socks-in", listen: true, users: "auth", group: "local" },
-  http: { label: "HTTP", note: "HTTP 代理", prefix: "http-in", listen: true, users: "auth", tls: true, systemProxy: true, group: "local" },
+  http: { label: "HTTP", note: "HTTP 代理", prefix: "http-in", listen: true, users: "auth", tls: true, reality: true, systemProxy: true, group: "local" },
   direct: { label: "Direct", note: "端口转发到固定目标", prefix: "direct-in", listen: true, group: "local" },
   tun: { label: "TUN", note: "系统级虚拟网卡，全局接管", prefix: "tun-in", tun: true, udpNat: true, group: "transparent" },
   redirect: { label: "Redirect", note: "Linux 透明代理 · TCP", prefix: "redirect-in", listen: true, linux: true, group: "transparent" },
   tproxy: { label: "TProxy", note: "Linux 透明代理 · TCP/UDP", prefix: "tproxy-in", listen: true, udpNat: true, linux: true, group: "transparent" },
   shadowsocks: { label: "Shadowsocks", note: "服务端", prefix: "ss-in", listen: true, users: "shadowsocks", multiplex: true, group: "server" },
-  vmess: { label: "VMess", note: "服务端", prefix: "vmess-in", listen: true, users: "vmess", tls: true, multiplex: true, transport: true, group: "server" },
-  vless: { label: "VLESS", note: "服务端", prefix: "vless-in", listen: true, users: "vless", tls: true, multiplex: true, transport: true, group: "server" },
-  trojan: { label: "Trojan", note: "服务端", prefix: "trojan-in", listen: true, users: "trojan", tls: true, multiplex: true, transport: true, group: "server" },
+  vmess: { label: "VMess", note: "服务端", prefix: "vmess-in", listen: true, users: "vmess", tls: true, reality: true, multiplex: true, transport: true, group: "server" },
+  vless: { label: "VLESS", note: "服务端", prefix: "vless-in", listen: true, users: "vless", tls: true, reality: true, multiplex: true, transport: true, group: "server" },
+  trojan: { label: "Trojan", note: "服务端", prefix: "trojan-in", listen: true, users: "trojan", tls: true, reality: true, multiplex: true, transport: true, group: "server" },
   naive: { label: "Naive", note: "NaïveProxy 服务端", prefix: "naive-in", listen: true, users: "auth", tls: true, tlsRequired: true, group: "server" },
   hysteria: { label: "Hysteria", note: "Hysteria v1 服务端", prefix: "hysteria-in", listen: true, users: "hysteria", tls: true, tlsRequired: true, group: "server" },
   hysteria2: { label: "Hysteria 2", note: "Hysteria v2 服务端", prefix: "hy2-in", listen: true, users: "hysteria2", tls: true, tlsRequired: true, group: "server" },
   shadowtls: { label: "ShadowTLS", note: "握手伪装，需转发到其它入站", prefix: "shadowtls-in", listen: true, users: "shadowtls", group: "server" },
   tuic: { label: "TUIC", note: "TUIC v5 服务端", prefix: "tuic-in", listen: true, users: "tuic", tls: true, tlsRequired: true, group: "server" },
-  anytls: { label: "AnyTLS", note: "AnyTLS 服务端", prefix: "anytls-in", listen: true, users: "anytls", tls: true, tlsRequired: true, group: "server" },
+  anytls: { label: "AnyTLS", note: "AnyTLS 服务端", prefix: "anytls-in", listen: true, users: "anytls", tls: true, tlsRequired: true, reality: true, group: "server" },
   snell: { label: "Snell", note: "Snell v5 / v6 服务端", prefix: "snell-in", listen: true, users: "snell", group: "server" },
   cloudflared: { label: "Cloudflared", note: "Cloudflare Tunnel 客户端，无本地监听", prefix: "cloudflared-in", badge: "1.14", group: "tunnel" }
 });
@@ -75,7 +75,13 @@ const TLS_DEFAULTS = Object.freeze({
   tlsCertificate: "",
   tlsCertificatePath: "",
   tlsKey: "",
-  tlsKeyPath: ""
+  tlsKeyPath: "",
+  realityEnabled: false,
+  realityHandshakeServer: "",
+  realityHandshakePort: "443",
+  realityPrivateKey: "",
+  realityShortId: "",
+  realityMaxTimeDifference: ""
 });
 
 const MULTIPLEX_DEFAULTS = Object.freeze({
@@ -216,7 +222,16 @@ function buildTls(inbound) {
     certificate: String(inbound.tlsCertificate || "").trim(),
     certificate_path: String(inbound.tlsCertificatePath || "").trim(),
     key: String(inbound.tlsKey || "").trim(),
-    key_path: String(inbound.tlsKeyPath || "").trim()
+    key_path: String(inbound.tlsKeyPath || "").trim(),
+    reality: meta.reality && inbound.realityEnabled
+      ? compact({
+          enabled: true,
+          handshake: compact({ server: String(inbound.realityHandshakeServer || "").trim(), server_port: optionalPort(inbound.realityHandshakePort) }),
+          private_key: String(inbound.realityPrivateKey || "").trim(),
+          short_id: splitList(inbound.realityShortId),
+          max_time_difference: String(inbound.realityMaxTimeDifference || "").trim()
+        })
+      : undefined
   });
 }
 
@@ -481,6 +496,16 @@ function validateTls(inbound, extra) {
   const extraTls = extra.tls || {};
   if (meta.tlsRequired && !inbound.tlsEnabled && !extraTls.enabled) return `${meta.label} 必须启用 TLS`;
   if (!inbound.tlsEnabled) return "";
+  if (inbound.realityEnabled) {
+    if (!meta.reality) return `${meta.label} 不支持 REALITY`;
+    if (!String(inbound.realityHandshakeServer || "").trim()) return "REALITY 需要填写握手目标服务器";
+    if (!optionalPort(inbound.realityHandshakePort)) return "REALITY 握手端口必须在 1–65535 之间";
+    if (!String(inbound.realityPrivateKey || "").trim()) return "REALITY 需要填写私钥（sing-box generate reality-keypair）";
+    const badShortId = splitList(inbound.realityShortId).find((item) => !/^[0-9a-f]{0,16}$/i.test(item) || item.length % 2 !== 0);
+    if (badShortId) return `REALITY Short ID 必须是偶数位、不超过 16 位的十六进制：${badShortId}`;
+    if (inbound.realityMaxTimeDifference && !DURATION_PATTERN.test(inbound.realityMaxTimeDifference.trim())) return "REALITY 最大时间差不是有效的 Go Duration";
+    return "";
+  }
   const certificate = inbound.tlsCertificate || inbound.tlsCertificatePath || extraTls.certificate || extraTls.certificate_path || extraTls.certificate_provider;
   const key = inbound.tlsKey || inbound.tlsKeyPath || extraTls.key || extraTls.key_path || extraTls.certificate_provider;
   if (!certificate) return "启用 TLS 后需要填写证书内容或证书路径";

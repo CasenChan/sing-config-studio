@@ -17,17 +17,17 @@ export const OUTBOUND_TYPE_META = Object.freeze({
   direct: { label: "Direct", note: "直连出站", prefix: "direct", group: "basic", server: false },
   bridge: { label: "Bridge", note: "二层桥接 · 1.14", prefix: "bridge", group: "basic", server: false, badge: "1.14" },
   socks: { label: "SOCKS", note: "SOCKS4/4a/5 客户端", prefix: "socks", group: "basic", uot: true },
-  http: { label: "HTTP", note: "HTTP 代理客户端", prefix: "http", group: "basic", tls: true },
+  http: { label: "HTTP", note: "HTTP 代理客户端", prefix: "http", group: "basic", tls: true, reality: true },
   shadowsocks: { label: "Shadowsocks", note: "SS 客户端", prefix: "ss", group: "proxy", uot: true, multiplex: true },
-  vmess: { label: "VMess", note: "VMess 客户端", prefix: "vmess", group: "proxy", tls: true, transport: true, multiplex: true },
+  vmess: { label: "VMess", note: "VMess 客户端", prefix: "vmess", group: "proxy", tls: true, transport: true, multiplex: true, reality: true },
   vless: { label: "VLESS", note: "VLESS 客户端，支持 Vision 与 REALITY", prefix: "vless", group: "proxy", tls: true, transport: true, multiplex: true, reality: true },
-  trojan: { label: "Trojan", note: "Trojan 客户端", prefix: "trojan", group: "proxy", tls: true, transport: true, multiplex: true },
+  trojan: { label: "Trojan", note: "Trojan 客户端", prefix: "trojan", group: "proxy", tls: true, transport: true, multiplex: true, reality: true },
   naive: { label: "Naive", note: "NaïveProxy 客户端", prefix: "naive", group: "proxy", tls: true },
-  hysteria: { label: "Hysteria", note: "Hysteria v1 客户端", prefix: "hysteria", group: "proxy", tls: true, tlsRequired: true },
-  hysteria2: { label: "Hysteria 2", note: "Hysteria v2 客户端", prefix: "hy2", group: "proxy", tls: true, tlsRequired: true },
+  hysteria: { label: "Hysteria", note: "Hysteria v1 客户端", prefix: "hysteria", group: "proxy", tls: true, tlsRequired: true, quic: true },
+  hysteria2: { label: "Hysteria 2", note: "Hysteria v2 客户端", prefix: "hy2", group: "proxy", tls: true, tlsRequired: true, quic: true },
   shadowtls: { label: "ShadowTLS", note: "配合其它出站使用的握手伪装", prefix: "shadowtls", group: "proxy", tls: true },
-  tuic: { label: "TUIC", note: "TUIC v5 客户端", prefix: "tuic", group: "proxy", tls: true, tlsRequired: true },
-  anytls: { label: "AnyTLS", note: "AnyTLS 客户端", prefix: "anytls", group: "proxy", tls: true, tlsRequired: true },
+  tuic: { label: "TUIC", note: "TUIC v5 客户端", prefix: "tuic", group: "proxy", tls: true, tlsRequired: true, quic: true },
+  anytls: { label: "AnyTLS", note: "AnyTLS 客户端，支持 REALITY", prefix: "anytls", group: "proxy", tls: true, tlsRequired: true, reality: true },
   snell: { label: "Snell", note: "Snell v4 / v6 客户端", prefix: "snell", group: "proxy" },
   tor: { label: "Tor", note: "通过本机 Tor 出站", prefix: "tor", group: "special", server: false },
   ssh: { label: "SSH", note: "SSH 隧道出站", prefix: "ssh", group: "special" }
@@ -426,6 +426,7 @@ export function validateOutbound(source, { nodes = [], outboundTags = [], dnsSer
     if (durationError) return durationError;
   }
   if (node.reality) {
+    if (meta.quic) return `${meta.label} 基于 QUIC，REALITY 客户端无法提供 QUIC 所需的标准 TLS 配置`;
     if (!meta.reality) return `${meta.label} 不支持 REALITY`;
     if (!node.tls) return "REALITY 需要同时启用 TLS";
     if (!String(node.publicKey || "").trim()) return "REALITY 需要填写 Public Key";

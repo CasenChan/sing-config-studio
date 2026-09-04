@@ -3182,6 +3182,20 @@ const inboundTlsGroup = {
   note: "ACME 已在 1.14 弃用，如需自动签发请在附加参数里使用 certificate_provider。"
 };
 
+const inboundRealityGroup = {
+  key: "reality",
+  title: "REALITY 服务端",
+  details: true,
+  fields: [
+    { key: "realityHandshakeServer", label: "握手目标服务器", placeholder: "www.microsoft.com" },
+    { key: "realityHandshakePort", label: "握手目标端口", type: "number", min: 1, max: 65535, placeholder: "443" },
+    { key: "realityPrivateKey", label: "私钥", type: "password", full: true, placeholder: "sing-box generate reality-keypair 生成" },
+    { key: "realityShortId", label: "Short ID", placeholder: "0123456789abcdef, 多个用逗号分隔" },
+    { key: "realityMaxTimeDifference", label: "最大时间差", placeholder: "默认 1m" }
+  ],
+  switches: [{ key: "realityEnabled", label: "启用 REALITY", note: "启用后不需要自己的证书，握手转发到目标站点" }]
+};
+
 const inboundMultiplexGroup = {
   key: "multiplex",
   title: "多路复用",
@@ -3423,6 +3437,7 @@ function inboundSchema(type) {
   if (type === "tun") groups.push(TUN_ROUTE_GROUP);
   if (meta.users) groups.push(inboundUsersGroup(type));
   if (meta.tls) groups.push(inboundTlsGroup);
+  if (meta.reality) groups.push(inboundRealityGroup);
   if (meta.multiplex) groups.push(inboundMultiplexGroup);
   if (meta.transport) groups.push(inboundTransportGroup);
   if (meta.listen) groups.push(listenGroup);
@@ -3665,7 +3680,7 @@ const nodeRealityGroup = {
     { key: "echConfig", label: "ECH 配置内容", type: "textarea", rows: 3, full: true, className: "certificate-field", placeholder: "-----BEGIN ECH CONFIGS-----" }
   ],
   switches: [
-    { key: "reality", label: "启用 REALITY", note: "仅 VLESS 支持，与 ECH 互斥" },
+    { key: "reality", label: "启用 REALITY", note: "TCP 类 TLS 协议可用（VLESS / VMess / Trojan / AnyTLS / HTTP），与 ECH 互斥；QUIC 类协议不可用" },
     { key: "echEnabled", label: "启用 ECH", note: "Encrypted Client Hello" }
   ]
 };

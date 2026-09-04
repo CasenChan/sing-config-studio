@@ -20,6 +20,7 @@ npm start
 
 - 17 种出站类型：Direct、Bridge、SOCKS、HTTP、Shadowsocks、VMess、VLESS、Trojan、Naive、Hysteria、Hysteria 2、ShadowTLS、TUIC、AnyTLS、Snell、Tor、SSH
 - 完整 TLS 客户端：uTLS 指纹、ECH、REALITY、TLS 分片与记录分片、ALPN、版本范围、自定义 CA
+- REALITY 对 TCP 类 TLS 协议开放（VLESS / VMess / Trojan / AnyTLS / HTTP，出站与入站两侧），QUIC 类协议（Hysteria / Hysteria 2 / TUIC）会被明确拒绝——内核的 REALITY 客户端无法提供 QUIC 所需的标准 TLS 配置
 - V2Ray 传输层、Multiplex、TCP Brutal、UDP over TCP 与全部非弃用 Dial Fields
 - Selector / URLTest 出站组，成员可自动包含全部节点或手动指定，支持默认成员与测试参数
 - detour 与出站组环路检测
@@ -29,7 +30,7 @@ npm start
 ### 入站
 
 - 19 种入站类型：Mixed、SOCKS、HTTP、Direct、TUN、Redirect、TProxy、Shadowsocks、VMess、VLESS、Trojan、Naive、Hysteria、Hysteria 2、ShadowTLS、TUIC、AnyTLS、Snell、Cloudflared
-- TLS 服务端、按协议校验的用户列表、Multiplex、TCP Brutal、V2Ray 传输层、UDP NAT
+- TLS 服务端（含 REALITY 服务端：握手目标、私钥、Short ID）、按协议校验的用户列表、Multiplex、TCP Brutal、V2Ray 传输层、UDP NAT
 - TUN 完整平台字段：`dns_mode`(1.14)、auto_route / auto_redirect、路由范围、UID / 包名 / MAC / 接口过滤、iproute2、platform
 
 ### 端点

@@ -229,7 +229,7 @@ Block 与 DNS 出站已在 1.11 弃用、1.13 移除，改用 `reject` 与 `hija
 - [x] TLS Client / Server
 - [x] ECH
 - [x] uTLS
-- [x] REALITY
+- [x] REALITY（客户端与服务端，按内核实际支持范围开放给全部 TCP 类 TLS 协议，QUIC 类拒绝）
 - [~] ACME 与证书提供器：不生成已弃用的 `acme`，`certificate_provider` 需在附加参数中填写
 - [x] HTTP Client（远程规则集内联或引用顶层标签）
 - [~] HTTP/2 Fields：随 Hysteria Realm 等对象通过附加参数提供
