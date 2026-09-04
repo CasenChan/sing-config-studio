@@ -80,14 +80,18 @@ npm start
 
 ## 部署
 
-订阅链接是无状态的，配置以 Base64URL 编码放在 URL 中。部署到公网时：
+订阅链接是无状态的，配置以 Base64URL 编码放在 URL 中，`/subscription` 只负责解码返回。因此：
+
+- **链接本身就是密钥**：拿到链接就能读到其中的节点凭据，请像密码一样分发。
+- **`SUBSCRIPTION_TOKEN` 是可选的，保护的是服务器而不是订阅内容**。设置后所有链接都必须带同一个 token，适合「只有自己生成链接」的私有部署；如果是对外公开给别人使用的服务，不要设置它（否则要么人人知道、要么无人能用）。
+- 对公开服务真正有效的保护是默认开启的限流与 512 KB 大小上限，以及端点只接受含 `inbounds` / `outbounds` 的 sing-box 配置。
 
 ```bash
-# 必须设置 token；限流默认每分钟 60 次
-SUBSCRIPTION_TOKEN=$(openssl rand -hex 24) \
-HOST=127.0.0.1 PORT=4173 \
-RATE_LIMIT_WINDOW_MS=60000 RATE_LIMIT_MAX=60 \
-npm start
+# 公开服务：不设 token，保留默认限流
+HOST=127.0.0.1 PORT=4173 npm start
+
+# 私有部署：额外加上 token，生成链接时在弹窗里填同一个值
+SUBSCRIPTION_TOKEN=$(openssl rand -hex 24) HOST=127.0.0.1 PORT=4173 npm start
 ```
 
 反向代理示例（Caddy）：
@@ -111,7 +115,7 @@ location / {
 ### 生产安全清单
 
 1. 只监听 `127.0.0.1`，由反向代理提供 HTTPS。
-2. 设置 `SUBSCRIPTION_TOKEN`，并在生成订阅时填写同样的 token。
+2. 私有部署时设置 `SUBSCRIPTION_TOKEN`，并在生成订阅时填写同样的 token；公开服务不设置。
 3. 为链接设置有效期（生成弹窗里的「有效期」），过期后端点返回 410。
 4. 保留默认限流，或按需调整 `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX`。
 5. 订阅 URL 与备份文件都包含节点凭据，按密码保管，不要放进版本库或聊天记录。
@@ -122,7 +126,7 @@ location / {
 | 变量 | 说明 |
 | --- | --- |
 | `HOST` / `PORT` | 监听地址与端口，默认 `127.0.0.1:4173` |
-| `SUBSCRIPTION_TOKEN` | 设置后 `/subscription` 必须带 `token` 参数 |
+| `SUBSCRIPTION_TOKEN` | 可选。设置后 `/subscription` 必须带相同的 `token` 参数，仅适合私有部署 |
 | `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX` | 限流窗口与上限，默认 60 秒 60 次 |
 | `SING_BOX_BIN` | 本机 sing-box 可执行文件路径，用于 `/api/check` |
 
