@@ -7,7 +7,7 @@
     <meta name="description" content="sing-box 1.14.0 配置与订阅链接生成器" />
     <title>sing-box · 配置生成器</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=18" />
+    <link rel="stylesheet" href="/styles.css?v=19" />
   </head>
   <body>
     <svg class="svg-sprite" aria-hidden="true">
@@ -579,12 +579,23 @@
         <label class="field"><span>订阅链接</span><div class="copy-field"><input id="subscriptionUrl" readonly /><button id="copySubscriptionBtn" class="secondary-button">复制</button></div></label>
         <div class="link-warning hidden" id="linkWarning">链接较长，节点较多时建议接入持久化存储。</div>
         <div class="link-warning link-guard hidden" id="subscriptionGuard"></div>
+        <div class="qr-block">
+          <div class="qr-head">
+            <strong>扫码导入</strong>
+            <div class="qr-switch" role="group" aria-label="二维码内容">
+              <button type="button" class="active" data-qr-mode="import">客户端导入链接</button>
+              <button type="button" data-qr-mode="raw">原始订阅地址</button>
+            </div>
+          </div>
+          <div class="qr-canvas" id="subscriptionQr"></div>
+          <small class="qr-meta" id="subscriptionQrMeta"></small>
+        </div>
         <div class="privacy-note"><svg><use href="#i-shield"/></svg>订阅地址包含节点凭据，请像密码一样保管。</div>
       </div>
       <div class="modal-actions"><a class="secondary-button" id="openSubscriptionBtn" href="#" target="_blank" rel="noreferrer">预览</a><a class="primary-button" id="importClientBtn" href="#">导入客户端</a></div>
     </dialog>
 
     <div class="toast" id="toast" role="status"><svg><use href="#i-check"/></svg><span>已复制</span></div>
-    <script type="module" src="/app.js?v=17"></script>
+    <script type="module" src="/app.js?v=18"></script>
   </body>
 </html>

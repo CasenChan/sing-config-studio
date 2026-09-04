@@ -16,6 +16,7 @@ import {
 import { detectConflicts, hasBlockingConflicts, summarizeConflicts } from "./modules/conflicts.js";
 import { importConfig } from "./modules/importer.js";
 import { dedupeNodes, diffNodes, exportShareLinks, filterNodes, renameNodes } from "./modules/sharelink.js";
+import { encodeQr, qrToSvg } from "./modules/qrcode.js";
 import {
   SERVICE_TYPE_META,
   normalizeService,
@@ -1407,14 +1408,32 @@ function defaultPublicBase() {
   return "http://127.0.0.1:4173/";
 }
 
-function buildSubscriptionUrl() {
+function bytesToBase64Url(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+// 用 deflate 压缩配置后再放进链接：JSON 通常能缩到 1/4 以下，二维码才装得下
+async function encodeSubscriptionData(json) {
+  if (typeof CompressionStream === "function") {
+    try {
+      const stream = new Blob([json]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+      const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+      return { data: bytesToBase64Url(bytes), enc: "deflate" };
+    } catch {}
+  }
+  return { data: encodeBase64Url(json), enc: "" };
+}
+
+async function buildSubscriptionUrl() {
   const validation = validateConfigText($("#configOutput").value);
   if (!validation.valid) throw new Error(validation.error);
-  let base = $("#publicBaseUrl").value.trim() || defaultPublicBase();
-  if (!/^https?:\/\//i.test(base)) base = `https://${base}`;
-  if (!base.endsWith("/")) base += "/";
+  const base = subscriptionBase();
   const endpoint = new URL("subscription", base);
-  endpoint.searchParams.set("data", encodeBase64Url(JSON.stringify(validation.config)));
+  const encoded = await encodeSubscriptionData(JSON.stringify(validation.config));
+  endpoint.searchParams.set("data", encoded.data);
+  if (encoded.enc) endpoint.searchParams.set("enc", encoded.enc);
   endpoint.searchParams.set("name", safeFilename(state.settings.profileName));
   endpoint.searchParams.set("interval", "60");
   const token = $("#subscriptionToken")?.value.trim();
@@ -1459,12 +1478,41 @@ async function updateSubscriptionGuard() {
   }
 }
 
-function updateSubscriptionFields() {
+const QR_MAX_BYTES = 2953; // 版本 40、纠错 L 的 Byte 模式上限
+let qrMode = "import";
+
+function renderSubscriptionQr(url, importLink) {
+  const canvas = $("#subscriptionQr");
+  const meta = $("#subscriptionQrMeta");
+  const text = qrMode === "import" ? importLink : url;
+  const bytes = new TextEncoder().encode(text).length;
+  if (bytes > QR_MAX_BYTES) {
+    const rawBytes = new TextEncoder().encode(url).length;
+    const hint = qrMode === "import" && rawBytes <= QR_MAX_BYTES
+      ? "客户端导入链接经过 URL 编码后超出二维码容量，请切换为「原始订阅地址」再扫。"
+      : "链接超出二维码容量（最多 2953 字节），请减少节点数量，或把长链接改为部署后的短地址。";
+    canvas.innerHTML = `<p class="qr-empty">${escapeHtml(hint)}</p>`;
+    meta.textContent = `${bytes} 字节 · 超出上限`;
+    return;
+  }
+  const level = bytes <= 2331 ? "M" : "L";
+  const qr = encodeQr(text, { level });
+  canvas.innerHTML = qrToSvg(qr, { module: 4 });
+  meta.textContent = `${bytes} 字节 · 版本 ${qr.version} · 纠错 ${level}${qrMode === "import" ? " · sing-box 客户端「扫码添加」可直接识别" : ""}`;
+}
+
+let subscriptionRender = 0;
+
+async function updateSubscriptionFields() {
+  const ticket = ++subscriptionRender;
   try {
-    const url = buildSubscriptionUrl();
+    const url = await buildSubscriptionUrl();
+    if (ticket !== subscriptionRender) return;
+    const importLink = `sing-box://import-remote-profile?url=${encodeURIComponent(url)}#${encodeURIComponent(state.settings.profileName || "Sing Profile")}`;
     $("#subscriptionUrl").value = url;
     $("#openSubscriptionBtn").href = url;
-    $("#importClientBtn").href = `sing-box://import-remote-profile?url=${encodeURIComponent(url)}#${encodeURIComponent(state.settings.profileName || "Sing Profile")}`;
+    $("#importClientBtn").href = importLink;
+    renderSubscriptionQr(url, importLink);
     updateSubscriptionGuard();
   } catch (error) {
     $("#subscriptionUrl").value = "";
@@ -1729,7 +1777,7 @@ function focusConflicts() {
   block.classList.add("flash");
 }
 
-$("#generateBtn").addEventListener("click", () => {
+$("#generateBtn").addEventListener("click", async () => {
   renderConfig();
   const validation = validateOutput();
   if (!validation.valid) return showToast(validation.error, true);
@@ -1739,7 +1787,8 @@ $("#generateBtn").addEventListener("click", () => {
   }
   if (!state.nodes.some(nodeIsComplete)) return showToast("请先添加至少一个完整节点", true);
   $("#publicBaseUrl").value = defaultPublicBase();
-  updateSubscriptionFields();
+  $("#subscriptionModal").showModal();
+  await updateSubscriptionFields();
   const exposed = state.nodes.filter(nodeIsComplete).length;
   const warning = $("#linkWarning");
   if (warning) {
@@ -1749,12 +1798,16 @@ $("#generateBtn").addEventListener("click", () => {
       : `链接内包含 ${exposed} 个节点的完整凭据，部署到公网时请配合 SUBSCRIPTION_TOKEN 与有效期使用。`;
     warning.classList.remove("hidden");
   }
-  $("#subscriptionModal").showModal();
 });
 $("#publicBaseUrl").addEventListener("input", updateSubscriptionFields);
 $("#subscriptionToken").addEventListener("input", updateSubscriptionFields);
 $("#subscriptionExpiry").addEventListener("change", updateSubscriptionFields);
 $("#copySubscriptionBtn").addEventListener("click", () => copyText($("#subscriptionUrl").value));
+$$(".qr-switch button").forEach((button) => button.addEventListener("click", () => {
+  qrMode = button.dataset.qrMode;
+  $$(".qr-switch button").forEach((item) => item.classList.toggle("active", item === button));
+  updateSubscriptionFields();
+}));
 $("#importClientBtn").addEventListener("click", (event) => {
   if (event.currentTarget.classList.contains("is-disabled")) {
     event.preventDefault();

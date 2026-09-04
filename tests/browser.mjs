@@ -120,6 +120,19 @@ try {
   await wait(350);
   assert.equal(await page.locator("#subscriptionModal").evaluate((el) => el.open), true);
   assert.match(await page.locator("#subscriptionUrl").inputValue(), /\/subscription\?data=/);
+  // 订阅二维码：有 BarcodeDetector 时真解码，内容必须等于客户端导入链接
+  assert.equal(await page.locator("#subscriptionQr svg").count(), 1, "应渲染出二维码");
+  const decoded = await page.evaluate(async () => {
+    if (!("BarcodeDetector" in window)) return "skip";
+    const svg = document.querySelector("#subscriptionQr svg");
+    const img = new Image();
+    await new Promise((resolve) => { img.onload = resolve; img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg.outerHTML); });
+    const canvas = document.createElement("canvas"); canvas.width = img.width; canvas.height = img.height;
+    canvas.getContext("2d").drawImage(img, 0, 0);
+    const found = await new BarcodeDetector({ formats: ["qr_code"] }).detect(canvas);
+    return found[0]?.rawValue || "未识别";
+  });
+  if (decoded !== "skip") assert.equal(decoded, await page.locator("#importClientBtn").getAttribute("href"), "二维码内容应与客户端导入链接一致");
   await page.click("#closeSubscription");
 
   // 配置导入往返

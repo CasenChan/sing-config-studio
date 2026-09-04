@@ -8,7 +8,7 @@
     "dev": "node --watch server.mjs",
     "start": "node server.mjs",
     "test:browser": "node tests/browser.mjs",
-    "check": "node --check server.mjs && node --check app.js && node --check modules/registry.js && node --check modules/shared.js && node --check modules/tailscale.js && node --check modules/endpoints.js && node --check modules/dns.js && node --check modules/route.js && node --check modules/inbound.js && node --check modules/conflicts.js && node --check modules/outbound.js && node --check modules/services.js && node --check modules/importer.js && node --check modules/sharelink.js && node tests/endpoints.mjs && node tests/dns.mjs && node tests/route.mjs && node tests/inbound.mjs && node tests/outbound.mjs && node tests/services.mjs && node tests/importer.mjs && node tests/sharelink.mjs && node tests/conflicts.mjs && node tests/browser.mjs"
+    "check": "node --check server.mjs && node --check app.js && node --check modules/registry.js && node --check modules/shared.js && node --check modules/tailscale.js && node --check modules/endpoints.js && node --check modules/dns.js && node --check modules/route.js && node --check modules/inbound.js && node --check modules/conflicts.js && node --check modules/outbound.js && node --check modules/services.js && node --check modules/importer.js && node --check modules/sharelink.js && node --check modules/qrcode.js && node tests/endpoints.mjs && node tests/dns.mjs && node tests/route.mjs && node tests/inbound.mjs && node tests/outbound.mjs && node tests/services.mjs && node tests/importer.mjs && node tests/sharelink.mjs && node tests/qrcode.mjs && node tests/subscription.mjs && node tests/conflicts.mjs && node tests/browser.mjs"
   },
   "engines": {
     "node": ">=20"

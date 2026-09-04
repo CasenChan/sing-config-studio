@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { inflateRawSync } from "node:zlib";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { extname, join, normalize } from "node:path";
@@ -98,13 +99,19 @@ function send(res, status, body, headers = {}) {
   res.end(body);
 }
 
-function decodeSubscription(value) {
+function decodeSubscription(value, encoding = "") {
   if (!value || value.length > maxSubscriptionBytes) {
     throw new Error("订阅数据为空或过大");
   }
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
-  const json = Buffer.from(padded, "base64").toString("utf8");
+  let raw = Buffer.from(padded, "base64");
+  if (encoding === "deflate") {
+    raw = inflateRawSync(raw, { maxOutputLength: maxSubscriptionBytes * 8 });
+  } else if (encoding) {
+    throw new Error(`不支持的编码：${encoding}`);
+  }
+  const json = raw.toString("utf8");
   const config = JSON.parse(json);
   if (!config || typeof config !== "object" || Array.isArray(config)) {
     throw new Error("订阅内容不是 sing-box 配置对象");
@@ -244,7 +251,7 @@ const server = createServer(async (req, res) => {
       return send(res, 410, "Subscription link expired\n", { "cache-control": "no-store" });
     }
     try {
-      const body = decodeSubscription(requestUrl.searchParams.get("data"));
+      const body = decodeSubscription(requestUrl.searchParams.get("data"), requestUrl.searchParams.get("enc") || "");
       const filename = (requestUrl.searchParams.get("name") || "sing-box-profile")
         .replace(/[^a-zA-Z0-9._-]+/g, "-")
         .slice(0, 80);
