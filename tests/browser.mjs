@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import assert from "node:assert/strict";
 import { testFakeipFlows } from "./fakeip-browser.mjs";
 import { testReviewFlows } from "./review-browser.mjs";
+import { testHttpSubscription } from "./http-browser.mjs";
 
 const require = createRequire(import.meta.url);
 const CHROME_CANDIDATES = [
@@ -43,7 +44,7 @@ for (let attempt = 0; attempt < 40; attempt += 1) {
   }
 }
 
-const browser = await chromium.launch({ executablePath, headless: true });
+const browser = await chromium.launch({ executablePath, headless: true, args: ["--host-resolver-rules=MAP sing-http.test 127.0.0.1", "--no-proxy-server"] });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const errors = [];
 page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
@@ -189,6 +190,7 @@ try {
   assert.deepEqual(errors, [], "页面不应有 JS 错误");
   await testFakeipFlows(browser, base);
   await testReviewFlows(browser, base);
+  await testHttpSubscription(browser, base);
   console.log("browser flow tests passed");
 } finally {
   await browser.close();

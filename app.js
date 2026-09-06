@@ -19,6 +19,7 @@ import { dedupeNodes, diffNodes, exportShareLinks, filterNodes, renameNodes } fr
 import { encodeQr, qrToSvg } from "./modules/qrcode.js";
 import { hasFakeipPreset, planFakeipPreset, planFakeipRemoval, planFakeipServerSave } from "./modules/fakeip.js";
 import { subscriptionPayload } from "./modules/subscription-payload.js";
+import { sha256 } from "./modules/sha256.js";
 import {
   SERVICE_TYPE_META,
   normalizeService,
@@ -649,10 +650,12 @@ async function copyText(text) {
     input.value = text;
     input.style.position = "fixed";
     input.style.opacity = "0";
-    document.body.append(input);
+    // HTTP 下走旧剪贴板接口，文本框必须在当前模态窗口内才能获得焦点。
+    (document.querySelector("dialog[open]") || document.body).append(input);
     input.select();
-    document.execCommand("copy");
+    const copied = document.execCommand("copy");
     input.remove();
+    if (!copied) return showToast("复制失败，请选中链接手动复制", true);
   }
   showToast("已复制到剪贴板");
 }
@@ -1382,10 +1385,8 @@ async function buildSubscriptionUrl() {
   const token = $("#subscriptionToken")?.value.trim();
   if (token) endpoint.searchParams.set("token", token);
   const days = Number($("#subscriptionExpiry")?.value || 0);
-  if (!globalThis.crypto?.subtle) throw new Error("生成签名链接需要通过 HTTPS 或本机地址打开页面");
   const payload = subscriptionPayload(Object.fromEntries(endpoint.searchParams));
-  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload));
-  const digest = [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const digest = await sha256(payload);
   const response = await fetch(new URL("api/sign-subscription", base), {
     method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(10000),
     body: JSON.stringify({ digest, days, token })
