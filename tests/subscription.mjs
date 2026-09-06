@@ -1,32 +1,71 @@
-// 订阅端点：明文 base64url 与 deflate 压缩两种 data 编码都要能解出同一份配置
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { mkdtemp, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { deflateRawSync } from "node:zlib";
+import { issueSignature, subscriptionDigest, verifySignature } from "../server/subscription-signing.mjs";
+import { startTestServer } from "./server-helper.mjs";
 
-const port = Number(process.env.TEST_PORT || 4198);
-const server = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, PORT: String(port), SUBSCRIPTION_TOKEN: "" }, stdio: "ignore" });
-const base = `http://127.0.0.1:${port}`;
-for (let i = 0; i < 40; i += 1) { try { await fetch(`${base}/health`); break; } catch { await new Promise((r) => setTimeout(r, 100)); } }
-try {
-  const config = { log: { level: "info" }, inbounds: [{ type: "mixed", tag: "m", listen_port: 7890 }], outbounds: [{ type: "direct", tag: "direct" }], dns: { servers: [{ type: "local", tag: "l" }] } };
-  const json = JSON.stringify(config);
-  const b64url = (buf) => buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-  const plain = await fetch(`${base}/subscription?data=${b64url(Buffer.from(json))}`);
-  assert.equal(plain.status, 200);
-  assert.deepEqual(JSON.parse(await plain.text()), config);
-  const compressed = deflateRawSync(Buffer.from(json));
-  assert.ok(compressed.length < Buffer.byteLength(json), "deflate 应缩短");
-  const inflated = await fetch(`${base}/subscription?data=${b64url(compressed)}&enc=deflate`);
-  assert.equal(inflated.status, 200);
-  assert.deepEqual(JSON.parse(await inflated.text()), config);
-  assert.equal(inflated.headers.get("profile-update-interval"), "60");
-  const bad = await fetch(`${base}/subscription?data=${b64url(compressed)}&enc=gzip`);
-  assert.equal(bad.status, 400);
-  const notConfig = await fetch(`${base}/subscription?data=${b64url(Buffer.from('{"hello":1}'))}`);
-  assert.equal(notConfig.status, 400, "不是 sing-box 配置的数据应被拒绝");
-  const status = await (await fetch(`${base}/api/status`)).json();
-  assert.equal(status.tokenRequired, false);
-  console.log("subscription endpoint tests passed");
-} finally {
-  server.kill();
+const directory = await mkdtemp(join(tmpdir(), "sing-signing-test-"));
+const settings = { STATE_DIRECTORY: directory, SUBSCRIPTION_SIGNING_KEY: "" };
+let server = await startTestServer(settings);
+const config = { log: { level: "info" }, inbounds: [{ type: "mixed", tag: "m", listen_port: 7890 }], outbounds: [{ type: "direct", tag: "direct" }], dns: { servers: [{ type: "local", tag: "l" }] } };
+async function signed(fields, days = 0, token = "") {
+  const body = { digest: subscriptionDigest(fields), days, token };
+  const response = await fetch(`${server.base}/api/sign-subscription`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  assert.equal(response.status, 200);
+  return new URL(`${server.base}/subscription?${new URLSearchParams({ ...fields, ...await response.json(), ...(token ? { token } : {}) })}`);
 }
+try {
+  const fields = { data: Buffer.from(JSON.stringify(config)).toString("base64url"), enc: "", name: "test", interval: "60" };
+  const plainUrl = await signed(fields);
+  assert.deepEqual(await (await fetch(plainUrl)).json(), config);
+  const compressed = deflateRawSync(Buffer.from(JSON.stringify(config))).toString("base64url");
+  const compressedUrl = await signed({ ...fields, data: compressed, enc: "deflate" }, 7);
+  const response = await fetch(compressedUrl);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), config);
+  assert.equal(response.headers.get("profile-update-interval"), "60");
+  assert.equal((await fetch(compressedUrl, { method: "HEAD" })).status, 200);
+  assert.equal((await fetch(await signed({ ...fields, enc: "gzip" }))).status, 400);
+  assert.equal((await fetch(await signed({ ...fields, data: Buffer.from('{"hello":1}').toString("base64url") }))).status, 400);
+
+  // 改、删、重复任一签名字段，以及退回无签名格式，都不能绕过有效期。
+  for (const name of ["data", "enc", "name", "interval", "expires", "sig", "sigv"]) {
+    for (const operation of ["change", "delete", "duplicate"]) {
+      const changed = new URL(compressedUrl);
+      if (operation === "change") changed.searchParams.set(name, name === "expires" ? "0" : "changed");
+      if (operation === "delete") changed.searchParams.delete(name);
+      if (operation === "duplicate") changed.searchParams.append(name, changed.searchParams.get(name));
+      assert.equal((await fetch(changed)).status, 401, `${operation} ${name}`);
+    }
+  }
+  assert.equal((await fetch(`${server.base}/subscription?data=${fields.data}`)).status, 401);
+  const key = "unit-test-signing-key-not-for-production";
+  const at = 1_700_000_000_000;
+  const expiring = new URLSearchParams({ ...fields, ...issueSignature(key, { digest: subscriptionDigest(fields), days: 1 }, at) });
+  assert.equal(verifySignature(key, expiring, at + 86_399_000), null);
+  assert.equal(verifySignature(key, expiring, at + 86_400_000).status, 410);
+  const permanent = new URLSearchParams({ ...fields, ...issueSignature(key, { digest: subscriptionDigest(fields), days: 0 }, at) });
+  assert.equal(verifySignature(key, permanent, at + 86400000000), null);
+  assert.throws(() => issueSignature(key, { digest: subscriptionDigest(fields), days: -1 }), /有效期/);
+  const cors = await fetch(`${server.base}/api/sign-subscription`, { method: "OPTIONS", headers: { origin: "https://other.example", "access-control-request-method": "POST" } });
+  assert.equal(cors.status, 204);
+  assert.equal(cors.headers.get("access-control-allow-origin"), "*");
+  assert.equal((await (await fetch(`${server.base}/api/status`)).json()).signatureVersion, 1);
+  assert.equal((await stat(join(directory, "subscription-signing-key"))).mode & 0o777, 0o600);
+
+  // 重启沿用磁盘密钥；独立 token 同时约束签发和读取。
+  await server.close();
+  server = await startTestServer(settings);
+  assert.equal((await fetch(`${server.base}${compressedUrl.pathname}${compressedUrl.search}`)).status, 200);
+  await server.close();
+  server = await startTestServer({ ...settings, SUBSCRIPTION_TOKEN: "private-test-token" });
+  const denied = await fetch(`${server.base}/api/sign-subscription`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ digest: subscriptionDigest(fields), days: 1 }) });
+  assert.equal(denied.status, 401);
+  const privateUrl = await signed(fields, 1, "private-test-token");
+  assert.equal((await fetch(privateUrl)).status, 200);
+  privateUrl.searchParams.delete("token");
+  assert.equal((await fetch(privateUrl)).status, 401);
+  console.log("signed subscription endpoint tests passed");
+} finally { await server.close(); await rm(directory, { recursive: true, force: true }); }

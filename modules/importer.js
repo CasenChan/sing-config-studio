@@ -503,7 +503,8 @@ export function importConfig(config) {
   const skippedInbounds = (config.inbounds || []).length - inbounds.length;
   if (skippedInbounds > 0) notices.push({ level: "warning", message: `${skippedInbounds} 个入站类型暂不支持，已跳过` });
 
-  const nodes = (config.outbounds || []).map(importOutbound).filter(Boolean).filter((node) => node.type !== "direct" || node.tag !== "direct");
+  // 仅省略完全等价于内置直连的项目；带拨号设置的 direct 必须保留。
+  const nodes = (config.outbounds || []).filter((outbound) => !(outbound?.type === "direct" && outbound.tag === "direct" && Object.keys(outbound).every((key) => ["type", "tag"].includes(key)))).map(importOutbound).filter(Boolean);
   const groups = (config.outbounds || []).map(importGroup).filter(Boolean);
   const endpoints = (config.endpoints || []).map(importEndpoint).filter(Boolean);
   const services = (config.services || []).map(importService).filter(Boolean);

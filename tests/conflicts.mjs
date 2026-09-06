@@ -98,7 +98,10 @@ const usedFakeip = baseConfig();
 usedFakeip.dns.servers.push({ type: "fakeip", tag: "fakeip", inet4_range: "198.18.0.0/15" });
 usedFakeip.dns.rules.push({ query_type: ["A"], action: "route", server: "fakeip" });
 usedFakeip.route.rules = [{ protocol: ["dns"], action: "hijack-dns" }];
-assert.ok(messages(detectConflicts(usedFakeip)).some((m) => m.includes("sniff")));
+assert.equal(messages(detectConflicts(usedFakeip)).some((m) => m.includes("sniff")), false, "FakeIP 在嗅探前自行还原域名");
+const multipleFakeip = structuredClone(usedFakeip);
+multipleFakeip.dns.servers.push({ type: "fakeip", tag: "fakeip-2", inet4_range: "198.20.0.0/15" });
+assert.ok(detectConflicts(multipleFakeip).some((item) => item.level === "error" && item.message.includes("多个 FakeIP")));
 
 // 引用检查
 const missing = baseConfig();
@@ -111,6 +114,13 @@ assert.ok(messages(missingIssues).some((m) => m.includes("不存在的出站：g
 assert.ok(messages(missingIssues).some((m) => m.includes("不存在的服务器：ghost-dns")));
 assert.ok(messages(missingIssues).some((m) => m.includes("不存在的规则集：ghost-set")));
 assert.equal(hasBlockingConflicts(missingIssues), true);
+const nested = baseConfig();
+nested.dns.rules.push({ type: "logical", mode: "or", rules: [{ preferred_by: ["missing-magic"] }], action: "route", server: "local-dns" });
+nested.outbounds[1].domain_resolver = { server: "missing-resolver" };
+assert.ok(messages(detectConflicts(nested)).some((text) => text.includes("missing-magic")));
+assert.ok(messages(detectConflicts(nested)).some((text) => text.includes("missing-resolver")));
+nested.dns.rules.at(-1).rules = [null];
+assert.ok(messages(detectConflicts(nested)).some((text) => text.includes("对象数组")), "无效子规则应阻断而不是令页面崩溃");
 
 // 出站组成员
 const badGroup = baseConfig();

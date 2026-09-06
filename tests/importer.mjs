@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { importConfig } from "../modules/importer.js";
+import { importConfig, importOutbound } from "../modules/importer.js";
 import { buildInbound } from "../modules/inbound.js";
-import { buildOutbound, buildGroup } from "../modules/outbound.js";
+import { buildOutbound, buildGroup, outboundModule } from "../modules/outbound.js";
 import { buildDnsSection } from "../modules/dns.js";
 import { buildRouteSection } from "../modules/route.js";
 import { buildService, buildNtp, buildExperimental } from "../modules/services.js";
@@ -143,4 +143,16 @@ const realityIn = { type: "anytls", tag: "at", listen_port: 443, users: [{ passw
 const realityState = importConfig({ inbounds: [realityIn], outbounds: [{ type: "direct", tag: "direct" }], dns: { servers: [{ type: "local", tag: "l" }] } }).state;
 assert.deepEqual(buildInbound(realityState.inbounds[0]), realityIn);
 
+// 名为 direct 的定制出站是用户对象，必须保留且不能再追加同名内置对象。
+const customDirect = { type: "direct", tag: "direct", bind_interface: "en0", inet4_bind_address: "192.168.1.2", routing_mark: 123, connect_timeout: "7s", domain_resolver: { server: "local-dns", strategy: "ipv4_only" } };
+const customState = importConfig({ ...source, outbounds: [...source.outbounds.slice(0, -1), customDirect] }).state;
+const regenerated = outboundModule.extendConfig({}, customState).outbounds;
+assert.equal(regenerated.filter(item => item.tag === "direct").length, 1);
+assert.deepEqual(regenerated.find(item => item.tag === "direct"), customDirect);
+assert.ok(regenerated.find(item => item.tag === "proxy").outbounds.includes("direct"));
+assert.equal(outboundModule.extendConfig({}, state).outbounds.filter(item => item.tag === "direct").length, 1);
+
+// 远程节点与完整 JSON 共用反序列化器，保留高级 TLS、传输、多路复用与拨号配置。
+const remote = { type: "trojan", tag: "advanced-remote", server: "remote.example.com", server_port: 443, password: "p", bind_interface: "en0", connect_timeout: "9s", tcp_fast_open: true, domain_resolver: { server: "local-dns", strategy: "prefer_ipv4" }, tls: { enabled: true, server_name: "remote.example.com", alpn: ["h2", "http/1.1"], utls: { enabled: true, fingerprint: "chrome" }, ech: { enabled: true, config: ["test-config"] }, fragment: true, kernel_tx: true }, transport: { type: "ws", path: "/ws", headers: { Host: "cdn.example.com" }, max_early_data: 2048, early_data_header_name: "Sec-WebSocket-Protocol" }, multiplex: { enabled: true, protocol: "h2mux", max_connections: 4, padding: true, brutal: { enabled: true, up_mbps: 20, down_mbps: 100 } } };
+assert.deepEqual(buildOutbound(importOutbound(remote, 0)), remote);
 console.log("importer round-trip tests passed");

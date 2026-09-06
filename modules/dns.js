@@ -251,7 +251,8 @@ export function validateDnsServer(source, { servers = [], endpoints = [], outbou
     }
   }
   if (server.type === "fakeip") {
-    if (!isIpPrefix(server.inet4Range, { requirePrefix: true })) return "FakeIP IPv4 段必须是 CIDR，例如 198.18.0.0/15";
+    if (!server.inet4Range && !server.inet6Range) return "FakeIP 至少需要一个 IPv4 或 IPv6 地址池";
+    if (server.inet4Range && !isIpPrefix(server.inet4Range, { requirePrefix: true })) return "FakeIP IPv4 段必须是 CIDR，例如 198.18.0.0/15";
     if (server.inet6Range && !isIpPrefix(server.inet6Range, { requirePrefix: true })) return "FakeIP IPv6 段必须是 CIDR，例如 fc00::/18";
   }
   if (meta.endpointTypes) {
@@ -708,7 +709,7 @@ export function validateDnsState(source, context = {}) {
 export const dnsModule = {
   key: "dns",
   extendConfig(config, state, context = {}) {
-    const section = buildDnsSection(state.dns, { outboundTags: context.outboundTags || null });
+    const section = buildDnsSection(state.dns, { outboundTags: context.outboundTags || null }) || {};
     config.dns = { ...section, servers: section.servers || [], rules: section.rules || [] };
     return config;
   }

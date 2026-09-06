@@ -14,9 +14,11 @@ import {
   validateInbounds
 } from "./modules/inbound.js";
 import { detectConflicts, hasBlockingConflicts, summarizeConflicts } from "./modules/conflicts.js";
-import { importConfig } from "./modules/importer.js";
+import { importConfig, importOutbound } from "./modules/importer.js";
 import { dedupeNodes, diffNodes, exportShareLinks, filterNodes, renameNodes } from "./modules/sharelink.js";
 import { encodeQr, qrToSvg } from "./modules/qrcode.js";
+import { hasFakeipPreset, planFakeipPreset, planFakeipRemoval, planFakeipServerSave } from "./modules/fakeip.js";
+import { subscriptionPayload } from "./modules/subscription-payload.js";
 import {
   SERVICE_TYPE_META,
   normalizeService,
@@ -247,7 +249,7 @@ function normalizeEndpointEntry(endpoint = {}) {
 }
 
 function migrateDnsState(parsed) {
-  if (parsed?.dns?.servers?.length) return normalizeDnsState(parsed.dns);
+  if (Array.isArray(parsed?.dns?.servers)) return normalizeDnsState(parsed.dns);
   const legacy = parsed?.settings || {};
   const dns = clone(defaultState.dns);
   const remote = dns.servers.find((server) => server.tag === "remote-dns");
@@ -265,7 +267,7 @@ function migrateServiceState(parsed) {
 }
 
 function migrateGroups(parsed) {
-  if (Array.isArray(parsed?.groups) && parsed.groups.length) return parsed.groups.map(normalizeGroup);
+  if (Array.isArray(parsed?.groups)) return parsed.groups.map(normalizeGroup);
   const legacy = parsed?.settings || {};
   const groups = clone(defaultState.groups);
   if (legacy.testInterval) groups[0].interval = legacy.testInterval;
@@ -276,7 +278,7 @@ function migrateGroups(parsed) {
 }
 
 function migrateInbounds(parsed) {
-  if (Array.isArray(parsed?.inbounds) && parsed.inbounds.length) return parsed.inbounds.map(normalizeInbound);
+  if (Array.isArray(parsed?.inbounds)) return parsed.inbounds.map(normalizeInbound);
   const legacy = parsed?.settings || {};
   if (legacy.inboundType === "mixed") {
     return [normalizeInbound({
@@ -294,7 +296,7 @@ function migrateInbounds(parsed) {
 }
 
 function migrateRouteState(parsed) {
-  if (parsed?.route?.rules?.length) return normalizeRouteState(parsed.route);
+  if (Array.isArray(parsed?.route?.rules)) return normalizeRouteState(parsed.route);
   const legacy = parsed?.settings || {};
   const route = clone(defaultState.route);
   if (legacy.privateDirect === false) route.rules = route.rules.filter((rule) => !rule.ipIsPrivate);
@@ -302,24 +304,24 @@ function migrateRouteState(parsed) {
   return normalizeRouteState(route);
 }
 
+function normalizeSavedState(parsed) {
+  if (!parsed?.settings || !Array.isArray(parsed.nodes)) throw new Error("备份内容不是本工具导出的状态");
+  return {
+    settings: { ...defaultState.settings, ...parsed.settings },
+    subscriptions: Array.isArray(parsed.subscriptions) ? parsed.subscriptions : [],
+    endpoints: Array.isArray(parsed.endpoints) ? parsed.endpoints.map(normalizeEndpointEntry) : [],
+    serviceState: migrateServiceState(parsed),
+    groups: migrateGroups(parsed),
+    inbounds: migrateInbounds(parsed),
+    dns: migrateDnsState(parsed),
+    route: migrateRouteState(parsed),
+    nodes: parsed.nodes.map(normalizeOutbound)
+  };
+}
+
 function loadState() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (parsed?.settings && Array.isArray(parsed.nodes)) {
-      return {
-        settings: { ...defaultState.settings, ...parsed.settings },
-        subscriptions: Array.isArray(parsed.subscriptions) ? parsed.subscriptions : [],
-        endpoints: Array.isArray(parsed.endpoints) ? parsed.endpoints.map(normalizeEndpointEntry) : [],
-        serviceState: migrateServiceState(parsed),
-        groups: migrateGroups(parsed),
-        inbounds: migrateInbounds(parsed),
-        dns: migrateDnsState(parsed),
-        route: migrateRouteState(parsed),
-        nodes: parsed.nodes.map(normalizeOutbound)
-      };
-    }
-  } catch {}
-  return clone(defaultState);
+  try { return normalizeSavedState(JSON.parse(localStorage.getItem(STORAGE_KEY))); }
+  catch { return clone(defaultState); }
 }
 
 function saveState() {
@@ -586,7 +588,7 @@ function showGenerationError(message) {
   $("#deprecatedCount").textContent = "—";
 }
 
-function renderConfig() {
+function renderConfig({ persist = true } = {}) {
   readSettings();
   readDnsSettings();
   readRouteSettings();
@@ -600,7 +602,7 @@ function renderConfig() {
     updateRouteSummary();
     renderConflicts([{ level: "error", scope: "生成", message: error.message }]);
     currentConflicts = [{ level: "error", scope: "生成", message: error.message }];
-    saveState();
+    if (persist) saveState();
     return;
   }
   $("#configOutput").value = JSON.stringify(config, null, 2);
@@ -615,7 +617,7 @@ function renderConfig() {
   syncRouteOutboundOptions();
   syncServiceInputs();
   refreshConflicts(config);
-  saveState();
+  if (persist) saveState();
 }
 
 function validateOutput() {
@@ -1218,69 +1220,10 @@ function parseVmess(line) {
   };
 }
 
-function nodeFromOutbound(outbound) {
-  const supported = new Set(Object.keys(OUTBOUND_TYPE_META).filter((type) => !["direct", "bridge", "tor"].includes(type)));
-  if (!outbound || !supported.has(outbound.type) || !outbound.server || !outbound.server_port) return null;
-  const tls = outbound.tls || {};
-  const transport = outbound.transport || {};
-  const headerHost = Object.entries(transport.headers || {}).find(([key]) => key.toLowerCase() === "host")?.[1];
-  const node = {
-    id: makeId(),
-    type: outbound.type,
-    tag: outbound.tag || `${outbound.type.toUpperCase()} · Subscription`,
-    server: outbound.server,
-    port: Number(outbound.server_port),
-    transport: transport.type || "tcp",
-    path: transport.type === "grpc" ? transport.service_name || "" : transport.path || "",
-    host: headerHost || transport.host || "",
-    tls: Boolean(tls.enabled) || ["hysteria2", "tuic", "anytls"].includes(outbound.type),
-    insecure: Boolean(tls.insecure),
-    sni: tls.server_name || outbound.server,
-    fingerprint: tls.utls?.enabled === false ? "" : tls.utls?.fingerprint || "",
-    reality: Boolean(tls.reality?.enabled),
-    publicKey: tls.reality?.public_key || "",
-    shortId: tls.reality?.short_id || ""
-  };
-  if (["vless", "vmess", "tuic"].includes(outbound.type)) node.uuid = outbound.uuid || "";
-  if (["trojan", "shadowsocks", "hysteria2", "tuic", "anytls"].includes(outbound.type)) node.password = outbound.password || "";
-  if (outbound.type === "vless") node.flow = outbound.flow || "";
-  if (outbound.type === "vmess") node.security = outbound.security || "auto";
-  if (outbound.type === "shadowsocks") node.method = outbound.method || "";
-  if (outbound.type === "hysteria2") {
-    node.obfsType = outbound.obfs?.type || "";
-    node.obfsPassword = outbound.obfs?.password || "";
-    node.upMbps = outbound.up_mbps ?? "";
-    node.downMbps = outbound.down_mbps ?? "";
-  }
-  if (outbound.type === "hysteria") {
-    node.authString = outbound.auth_str || "";
-    node.up = outbound.up || "";
-    node.down = outbound.down || "";
-    node.obfs = outbound.obfs || "";
-  }
-  if (outbound.type === "tuic") {
-    node.congestionControl = outbound.congestion_control || "bbr";
-    node.udpRelayMode = outbound.udp_relay_mode || "native";
-  }
-  if (["socks", "http", "naive", "ssh"].includes(outbound.type)) {
-    node.username = outbound.username || "";
-    node.user = outbound.user || "";
-    node.password = outbound.password || "";
-  }
-  if (["shadowtls", "snell"].includes(outbound.type)) {
-    node.version = String(outbound.version || (outbound.type === "snell" ? 4 : 3));
-    node.password = outbound.password || "";
-    node.psk = outbound.psk || "";
-  }
-  if (outbound.type === "anytls") node.password = outbound.password || "";
-  if (outbound.network) node.network = outbound.network;
-  if (outbound.detour) node.detour = outbound.detour;
-  if (outbound.multiplex?.enabled) {
-    node.multiplexEnabled = true;
-    node.multiplexProtocol = outbound.multiplex.protocol || "";
-    node.maxConnections = outbound.multiplex.max_connections ?? "";
-  }
-  return normalizeOutbound(node);
+function nodeFromOutbound(outbound, index) {
+  if (!outbound || ["direct", "bridge", "tor"].includes(outbound.type)) return null;
+  const node = importOutbound(outbound, index);
+  return node && nodeIsComplete(node) ? node : null;
 }
 
 function parseSubscriptionContent(content, allowBase64 = true) {
@@ -1433,13 +1376,24 @@ async function buildSubscriptionUrl() {
   const endpoint = new URL("subscription", base);
   const encoded = await encodeSubscriptionData(JSON.stringify(validation.config));
   endpoint.searchParams.set("data", encoded.data);
-  if (encoded.enc) endpoint.searchParams.set("enc", encoded.enc);
+  endpoint.searchParams.set("enc", encoded.enc);
   endpoint.searchParams.set("name", safeFilename(state.settings.profileName));
   endpoint.searchParams.set("interval", "60");
   const token = $("#subscriptionToken")?.value.trim();
   if (token) endpoint.searchParams.set("token", token);
   const days = Number($("#subscriptionExpiry")?.value || 0);
-  if (days) endpoint.searchParams.set("expires", String(Math.floor(Date.now() / 1000) + days * 86400));
+  if (!globalThis.crypto?.subtle) throw new Error("生成签名链接需要通过 HTTPS 或本机地址打开页面");
+  const payload = subscriptionPayload(Object.fromEntries(endpoint.searchParams));
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload));
+  const digest = [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const response = await fetch(new URL("api/sign-subscription", base), {
+    method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(10000),
+    body: JSON.stringify({ digest, days, token })
+  });
+  const signature = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(signature?.error || "订阅服务不支持签名，请更新服务后重新生成链接");
+  if (signature?.sigv !== "1" || !/^\d+$/.test(signature.expires) || !/^[A-Za-z0-9_-]{43}$/.test(signature.sig)) throw new Error("订阅服务返回了无效签名");
+  for (const key of ["sigv", "expires", "sig"]) endpoint.searchParams.set(key, signature[key]);
   return endpoint.toString();
 }
 
@@ -1460,10 +1414,10 @@ function subscriptionBase() {
   return base.endsWith("/") ? base : `${base}/`;
 }
 
-async function updateSubscriptionGuard() {
+async function updateSubscriptionGuard(ticket) {
   const base = subscriptionBase();
   const status = await probeSubscriptionServer(base);
-  if (base !== subscriptionBase()) return;
+  if (ticket !== subscriptionRender || base !== subscriptionBase()) return;
   const token = $("#subscriptionToken").value.trim();
   const guard = $("#subscriptionGuard");
   const importButton = $("#importClientBtn");
@@ -1505,6 +1459,13 @@ let subscriptionRender = 0;
 
 async function updateSubscriptionFields() {
   const ticket = ++subscriptionRender;
+  $("#subscriptionUrl").value = "";
+  $("#openSubscriptionBtn").removeAttribute("href");
+  $("#importClientBtn").removeAttribute("href");
+  $("#copySubscriptionBtn").disabled = true;
+  $("#subscriptionQr").innerHTML = "";
+  $("#subscriptionQrMeta").textContent = "正在生成签名链接…";
+  $("#subscriptionGuard").classList.add("hidden");
   try {
     const url = await buildSubscriptionUrl();
     if (ticket !== subscriptionRender) return;
@@ -1512,10 +1473,18 @@ async function updateSubscriptionFields() {
     $("#subscriptionUrl").value = url;
     $("#openSubscriptionBtn").href = url;
     $("#importClientBtn").href = importLink;
+    $("#copySubscriptionBtn").disabled = false;
     renderSubscriptionQr(url, importLink);
-    updateSubscriptionGuard();
+    updateSubscriptionGuard(ticket);
   } catch (error) {
+    if (ticket !== subscriptionRender) return;
     $("#subscriptionUrl").value = "";
+    $("#openSubscriptionBtn").removeAttribute("href");
+    $("#importClientBtn").removeAttribute("href");
+    $("#subscriptionQr").innerHTML = "";
+    $("#subscriptionQrMeta").textContent = "生成失败，请修正后重试";
+    $("#subscriptionGuard").textContent = error.message;
+    $("#subscriptionGuard").classList.remove("hidden");
     showToast(error.message, true);
   }
 }
@@ -1806,7 +1775,8 @@ $("#copySubscriptionBtn").addEventListener("click", () => copyText($("#subscript
 $$(".qr-switch button").forEach((button) => button.addEventListener("click", () => {
   qrMode = button.dataset.qrMode;
   $$(".qr-switch button").forEach((item) => item.classList.toggle("active", item === button));
-  updateSubscriptionFields();
+  const url = $("#subscriptionUrl").value;
+  if (url) renderSubscriptionQr(url, $("#importClientBtn").href);
 }));
 $("#importClientBtn").addEventListener("click", (event) => {
   if (event.currentTarget.classList.contains("is-disabled")) {
@@ -1819,17 +1789,8 @@ $("#closeSubscription").addEventListener("click", () => $("#subscriptionModal").
 
 $("#resetBtn").addEventListener("click", () => {
   if (!confirm("恢复演示配置？当前浏览器内保存的节点会被覆盖。")) return;
-  saveSnapshot("恢复示例前");
-  state = clone(defaultState);
-  syncInputsFromState();
-  renderNodes();
-  renderGroups();
-  renderEndpoints();
-  renderInbounds();
-  renderDns();
-  renderRoute();
-  renderServices();
-  renderConfig();
+  try { commitState(normalizeSavedState(clone(defaultState)), "恢复示例前"); }
+  catch (error) { return showToast(error.message, true); }
   showToast("已恢复演示配置");
 });
 
@@ -1905,7 +1866,7 @@ const DNS_SERVER_FIELDS = {
   mdns: { fields: [{ key: "interface", label: "查询接口", full: true, placeholder: "留空使用全部可用接口，例如 en0, en1" }] },
   fakeip: {
     fields: [
-      { key: "inet4Range", label: "IPv4 段", required: true, placeholder: "198.18.0.0/15" },
+      { key: "inet4Range", label: "IPv4 段", placeholder: "198.18.0.0/15（可留空仅用 IPv6）" },
       { key: "inet6Range", label: "IPv6 段", placeholder: "fc00::/18" }
     ]
   },
@@ -2168,17 +2129,63 @@ function nextDnsTag(type) {
   return tag;
 }
 
+let pendingFakeipPreset = false;
+let pendingFakeipRemovalId = "";
+
+function renderFakeipPlan(container, result) {
+  const groups = [["errors", "error", "待修正"], ["changes", "", "变更"], ["preserved", "warning", "保留"], ["warnings", "warning", "提醒"]];
+  container.innerHTML = `${result.summary ? `<p class="fakeip-summary">${escapeHtml(result.summary)}</p>` : ""}<ul class="conflict-list">${groups.flatMap(([key, level, label]) => (result[key] || []).map((message) => `<li class="conflict-item${level ? ` is-${level}` : ""}"><span class="conflict-scope">${label}</span><span>${escapeHtml(message)}</span></li>`)).join("")}</ul>`;
+  container.classList.remove("hidden");
+}
+
+function updateFakeipPreview() {
+  if (!pendingFakeipPreset) return;
+  const result = planFakeipPreset(state, readDnsServerForm(), { tunId: $("#fakeipTunSelect").value });
+  $("#dnsServerFormError").textContent = "";
+  renderFakeipPlan($("#fakeipPresetPreview"), result);
+  $("#saveDnsServerBtn").textContent = "保存并应用";
+  $("#fakeipPresetStatus").textContent = result.errors.length ? "请先修正预览中的问题" : "待保存应用";
+}
+
+// 先持久化旧快照和候选状态，再刷新界面，存储失败时不覆盖当前配置。
+function commitState(nextState, reason) {
+  const previousSnapshot = localStorage.getItem(SNAPSHOT_KEY);
+  try {
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({ reason, savedAt: Date.now(), state }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+  } catch (error) {
+    try {
+      if (previousSnapshot === null) localStorage.removeItem(SNAPSHOT_KEY);
+      else localStorage.setItem(SNAPSHOT_KEY, previousSnapshot);
+    } catch {}
+    throw new Error(`无法保存备份或配置，当前配置未覆盖：${error.message}`);
+  }
+  state = nextState;
+  renderAllPanels({ persist: false });
+}
+
 function openDnsServerModal(type, server = null) {
   const schema = dnsServerSchema(type);
   const value = normalizeDnsServer(server || { type, tag: nextDnsTag(type) });
   $("#dnsServerForm").reset();
   $("#dnsServerFormError").textContent = "";
   $("#dnsServerType").value = type;
-  $("#dnsServerId").value = server?.id || "";
+  $("#dnsServerId").value = server?.id || makeId();
   $("#dnsServerModalTitle").textContent = `${server ? "编辑" : "添加"} ${schema.title}`;
   $("#dnsServerModalVersion").textContent = `sing-box 1.14.0 · type: ${type}`;
   $("#dnsServerIntro").textContent = schema.intro;
   $("#dnsServerFields").innerHTML = renderSchemaForm(schema, value, { value });
+  pendingFakeipPreset = false;
+  $("#saveDnsServerBtn").textContent = "保存 Server";
+  $("#fakeipPresetControls").classList.toggle("hidden", type !== "fakeip");
+  $("#fakeipPresetPreview").classList.add("hidden");
+  $("#fakeipPresetPreview").innerHTML = "";
+  $("#fakeipPresetStatus").textContent = hasFakeipPreset(state, server?.id) ? "已有关联配置，可再次补齐" : "尚未应用预设";
+  const tuns = state.inbounds.filter((item) => item.type === "tun" && item.enabled !== false);
+  const previousTun = state.dns.fakeipPresets?.profiles?.find((item) => item.serverId === server?.id)?.tunId;
+  $("#fakeipTunField").classList.toggle("hidden", tuns.length <= 1);
+  $("#fakeipTunSelect").innerHTML = `<option value="">${tuns.length > 1 ? "请选择目标 TUN" : "自动选择或补建 TUN"}</option>${tuns.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.tag)}</option>`).join("")}`;
+  $("#fakeipTunSelect").value = tuns.some((item) => item.id === previousTun) ? previousTun : "";
   $("#dnsServerModal").showModal();
   $('[data-field="tag"]', $("#dnsServerFields"))?.focus();
 }
@@ -2465,12 +2472,25 @@ setupSortableList("#dnsServerList", () => state.dns.servers, {
     showToast("DNS Server 已复制");
   },
   onDelete: (server) => {
+    if (server.type === "fakeip" && hasFakeipPreset(state, server.id)) {
+      pendingFakeipRemovalId = server.id;
+      $("#fakeipRemovalError").textContent = "";
+      renderFakeipPlan($("#fakeipRemovalPreview"), planFakeipRemoval(state, server.id));
+      renderFakeipPlan($("#fakeipOnlyRemovalPreview"), planFakeipRemoval(state, server.id, { cleanup: false }));
+      $("#fakeipRemovalModal").showModal();
+      return;
+    }
     const tag = String(server.tag || "").trim();
     const used = (state.dns.rules || []).some((rule) => rule.server === tag || splitTagList(rule.preferredBy).includes(tag));
     if (!confirm(used ? `DNS Server“${tag}”仍被规则引用，仍要删除吗？` : `删除 DNS Server“${tag}”吗？`)) return;
-    state.dns.servers = state.dns.servers.filter((entry) => entry.id !== server.id);
-    renderDns();
-    renderConfig();
+    if (server.type === "fakeip") {
+      try { commitState(planFakeipRemoval(state, server.id, { cleanup: false }).state, "删除 FakeIP 前"); }
+      catch (error) { return showToast(error.message, true); }
+    } else {
+      state.dns.servers = state.dns.servers.filter((entry) => entry.id !== server.id);
+      renderDns();
+      renderConfig();
+    }
     showToast("DNS Server 已删除");
   }
 });
@@ -2529,6 +2549,20 @@ $("#dnsServerForm").addEventListener("submit", (event) => {
   const server = readDnsServerForm();
   const error = validateDnsServer(server, dnsValidationContext());
   if (error) return $("#dnsServerFormError").textContent = error;
+  if (server.type === "fakeip") {
+    const result = pendingFakeipPreset
+      ? planFakeipPreset(state, server, { tunId: $("#fakeipTunSelect").value })
+      : planFakeipServerSave(state, server);
+    if (result.errors.length) {
+      renderFakeipPlan($("#fakeipPresetPreview"), result);
+      return $("#dnsServerFormError").textContent = result.errors[0];
+    }
+    try { commitState(result.state, pendingFakeipPreset ? "应用 FakeIP 预设前" : "保存 FakeIP 前"); }
+    catch (error) { return $("#dnsServerFormError").textContent = error.message; }
+    $("#dnsServerModal").close();
+    showToast(result.warnings.length ? `FakeIP 已保存。${result.warnings[0]}` : pendingFakeipPreset ? "FakeIP 预设已应用" : "FakeIP Server 已保存", Boolean(result.warnings.length));
+    return;
+  }
   const index = state.dns.servers.findIndex((entry) => entry.id === server.id);
   if (index >= 0) state.dns.servers[index] = server;
   else state.dns.servers.push(server);
@@ -2537,6 +2571,26 @@ $("#dnsServerForm").addEventListener("submit", (event) => {
   renderConfig();
   showToast(index >= 0 ? "DNS Server 已更新" : "DNS Server 已添加");
 });
+
+$("#configureFakeipBtn").addEventListener("click", () => {
+  if (!$("#dnsServerForm").reportValidity()) return;
+  pendingFakeipPreset = true;
+  $("#dnsServerFormError").textContent = "";
+  updateFakeipPreview();
+});
+$("#dnsServerFields").addEventListener("input", updateFakeipPreview);
+$("#fakeipTunSelect").addEventListener("change", updateFakeipPreview);
+$("#dnsServerModal").addEventListener("close", () => { pendingFakeipPreset = false; });
+for (const [selector, cleanup] of [["#removeFakeipPresetBtn", true], ["#removeFakeipOnlyBtn", false]]) {
+  $(selector).addEventListener("click", () => {
+    const result = planFakeipRemoval(state, pendingFakeipRemovalId, { cleanup });
+    if (result.errors.length) return $("#fakeipRemovalError").textContent = result.errors[0];
+    try { commitState(result.state, "删除 FakeIP 前"); }
+    catch (error) { return $("#fakeipRemovalError").textContent = error.message; }
+    $("#fakeipRemovalModal").close();
+    showToast(result.warnings.length ? "FakeIP 已删除，仍有引用需要在冲突检查中修正" : result.preserved.length ? `FakeIP 已删除，保留了 ${result.preserved.length} 项设置` : cleanup ? "FakeIP 与关联配置已清理" : "FakeIP 已删除，配套设置已保留", Boolean(result.warnings.length));
+  });
+}
 
 $("#dnsRuleForm").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -2566,7 +2620,8 @@ function activeGroups() {
 
 function defaultFinalOutbound() {
   const groups = activeGroups();
-  if (groups.length) return String(groups[0].tag || "").trim();
+  const group = groups.find((item) => item.type === "selector") || groups[0];
+  if (group) return String(group.tag || "").trim();
   const nodes = nodeTagList();
   return nodes.length ? nodes[0] : "direct";
 }
@@ -3063,7 +3118,7 @@ function syncRouteOutboundOptions() {
   if (!select || document.activeElement === select) return;
   const tags = availableOutboundTags();
   const current = String(state.route.final || "").trim();
-  select.innerHTML = [`<option value="">自动 · 有节点时用 proxy</option>`, ...tags.map((tag) => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`)].join("");
+  select.innerHTML = [`<option value="">自动 · ${escapeHtml(defaultFinalOutbound())}</option>`, ...tags.map((tag) => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`)].join("");
   select.value = tags.includes(current) ? current : "";
 }
 
@@ -4200,7 +4255,7 @@ function renderGroups() {
   if (summary) {
     summary.textContent = cycles.length
       ? `检测到 detour 环路：${cycles[0].join(" → ")}`
-      : `${groups.length} 个出站组 · 默认出站 ${defaultFinalOutbound()}`;
+      : `${groups.length} 个出站组 · 自动默认出站 ${defaultFinalOutbound()}`;
     summary.closest(".node-foot")?.classList.toggle("has-issue", cycles.length > 0);
   }
 }
@@ -4629,21 +4684,9 @@ $("#importConfigForm").addEventListener("submit", (event) => {
     if (!pendingImport) return;
   }
   if (!confirm("导入会覆盖当前浏览器里的全部配置，确定继续吗？")) return;
-  const imported = pendingImport.state;
-  state = {
-    settings: { ...clone(defaultState.settings), ...imported.settings },
-    subscriptions: [],
-    nodes: imported.nodes,
-    groups: imported.groups,
-    endpoints: imported.endpoints,
-    inbounds: imported.inbounds,
-    dns: imported.dns,
-    route: imported.route,
-    serviceState: imported.serviceState
-  };
-  saveSnapshot("导入配置前");
+  try { commitState(normalizeSavedState({ ...pendingImport.state, subscriptions: [] }), "导入配置前"); }
+  catch (error) { return $("#importConfigError").textContent = error.message; }
   $("#importConfigModal").close();
-  renderAllPanels();
   const warnings = pendingImport.notices.length;
   showToast(`已导入配置${warnings ? `，${warnings} 条提示` : ""}`, Boolean(warnings));
   pendingImport = null;
@@ -4722,12 +4765,6 @@ $("#tidyForm").addEventListener("submit", (event) => {
 
 const SNAPSHOT_KEY = `${STORAGE_KEY}:snapshot`;
 
-function saveSnapshot(reason) {
-  try {
-    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({ reason, savedAt: Date.now(), state }));
-  } catch {}
-}
-
 function readSnapshot() {
   try {
     return JSON.parse(localStorage.getItem(SNAPSHOT_KEY));
@@ -4736,7 +4773,7 @@ function readSnapshot() {
   }
 }
 
-function renderAllPanels() {
+function renderAllPanels({ persist = true } = {}) {
   syncInputsFromState();
   renderNodes();
   renderGroups();
@@ -4745,7 +4782,7 @@ function renderAllPanels() {
   renderDns();
   renderRoute();
   renderServices();
-  renderConfig();
+  renderConfig({ persist });
 }
 
 function currentBackup() {
@@ -4796,11 +4833,9 @@ $("#backupForm").addEventListener("submit", (event) => {
   const restored = parsed?.state || parsed;
   if (!restored?.settings || !Array.isArray(restored.nodes)) return $("#backupError").textContent = "备份内容不是本工具导出的状态";
   if (!confirm("恢复会覆盖当前浏览器里的全部配置，确定继续吗？")) return;
-  saveSnapshot("恢复备份前");
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
-  state = loadState();
+  try { commitState(normalizeSavedState(restored), "恢复备份前"); }
+  catch (error) { return $("#backupError").textContent = error.message; }
   $("#backupModal").close();
-  renderAllPanels();
   showToast("配置已恢复");
 });
 

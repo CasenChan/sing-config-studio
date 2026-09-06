@@ -96,6 +96,7 @@ function checkDns(config) {
   const fakeip = servers.filter((server) => server.type === "fakeip");
   const fakeipTags = fakeip.map((server) => server.tag);
   if (!fakeipTags.length) return issues;
+  if (fakeipTags.length > 1) issues.push(issue("error", "DNS", "sing-box 1.14 不支持同时启用多个 FakeIP Server，请只保留一个启用项"));
 
   const resolver = config.route?.default_domain_resolver;
   const resolverTag = typeof resolver === "object" ? resolver?.server : resolver;
@@ -115,9 +116,6 @@ function checkDns(config) {
     issues.push(issue("warning", "DNS", `FakeIP 服务器「${unused.join("、")}」没有被任何 DNS 规则或 dns.final 使用，不会生效`));
   }
   const inUse = fakeipTags.some((tag) => referenced.has(tag));
-  if (inUse && !(config.route?.rules || []).some((rule) => rule.action === "sniff")) {
-    issues.push(issue("warning", "路由", "使用 FakeIP 时建议保留 sniff 规则，否则无法从虚拟地址还原出域名"));
-  }
   if (inUse && config.dns?.reverse_mapping) {
     issues.push(issue("warning", "DNS", "FakeIP 与反向映射同时启用时，反向映射不会带来额外效果"));
   }
@@ -131,7 +129,20 @@ function checkRoute(config, { skippedRules = [] } = {}) {
   const dnsTags = (config.dns?.servers || []).map((item) => item.tag).filter(Boolean);
   const ruleSetTags = (config.route?.rule_set || []).flatMap((item) => (Array.isArray(item.tag) ? item.tag : [item.tag])).filter(Boolean);
 
-  for (const rule of config.route?.rules || []) {
+  function nestedRules(rules = [], scope) {
+    if (!Array.isArray(rules)) {
+      issues.push(issue("error", scope, "逻辑子规则必须是对象数组"));
+      return [];
+    }
+    return rules.flatMap((rule) => {
+      if (!rule || typeof rule !== "object" || Array.isArray(rule)) {
+        issues.push(issue("error", scope, "逻辑子规则必须是对象数组"));
+        return [];
+      }
+      return [rule, ...nestedRules(rule.rules, scope)];
+    });
+  }
+  for (const rule of nestedRules(config.route?.rules, "路由")) {
     for (const tag of [].concat(rule.inbound || [])) {
       if (!inboundTags.includes(tag)) issues.push(issue("error", "路由", `路由规则引用了不存在的入站：${tag}`));
     }
@@ -145,12 +156,28 @@ function checkRoute(config, { skippedRules = [] } = {}) {
       if (!ruleSetTags.includes(tag)) issues.push(issue("error", "路由", `路由规则引用了不存在的规则集：${tag}`));
     }
   }
-  for (const rule of config.dns?.rules || []) {
+  for (const rule of nestedRules(config.dns?.rules, "DNS")) {
     if (rule.server && !dnsTags.includes(rule.server)) issues.push(issue("error", "DNS", `DNS 规则引用了不存在的服务器：${rule.server}`));
+    for (const tag of [].concat(rule.preferred_by || [])) {
+      if (!dnsTags.includes(tag)) issues.push(issue("error", "DNS", `preferred_by 引用了不存在的服务器：${tag}`));
+    }
     for (const tag of [].concat(rule.rule_set || [])) {
       if (!ruleSetTags.includes(tag)) issues.push(issue("error", "DNS", `DNS 规则引用了不存在的规则集：${tag}`));
     }
   }
+  // 拨号解析器可以出现在节点、端点、DNS Server 或嵌套的高级字段中。
+  function checkResolvers(value) {
+    if (!value || typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value)) {
+      if (["domain_resolver", "default_domain_resolver"].includes(key)) {
+        const tag = typeof child === "string" ? child : child?.server;
+        if (tag && !dnsTags.includes(tag)) issues.push(issue("error", "DNS", `域名解析器引用了不存在的服务器：${tag}`));
+        else if (tag && (config.dns?.servers || []).some((item) => item.tag === tag && item.type === "fakeip")) issues.push(issue("error", "DNS", `域名解析器不能指向 FakeIP 服务器「${tag}」`));
+      }
+      checkResolvers(child);
+    }
+  }
+  checkResolvers(config);
   if (config.route?.final && !routableTags.includes(config.route.final)) {
     issues.push(issue("error", "路由", `默认出站不存在：${config.route.final}`));
   }

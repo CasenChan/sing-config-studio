@@ -629,7 +629,9 @@ export const outboundModule = {
     const builtGroups = groups
       .map((group) => buildGroup(group, { nodeTags, groupTags }))
       .filter((group) => (group.outbounds || []).length);
-    config.outbounds = [...builtGroups, ...nodes.map(buildOutbound), { type: "direct", tag: "direct" }];
+    const builtNodes = nodes.map(buildOutbound);
+    config.outbounds = [...builtGroups, ...builtNodes];
+    if (!config.outbounds.some((outbound) => outbound.tag === "direct")) config.outbounds.push({ type: "direct", tag: "direct" });
     return config;
   }
 };

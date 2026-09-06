@@ -4,6 +4,8 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import assert from "node:assert/strict";
+import { testFakeipFlows } from "./fakeip-browser.mjs";
+import { testReviewFlows } from "./review-browser.mjs";
 
 const require = createRequire(import.meta.url);
 const CHROME_CANDIDATES = [
@@ -29,7 +31,7 @@ if (!executablePath) {
 }
 
 const port = Number(process.env.TEST_PORT || 4199);
-const server = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, PORT: String(port) }, stdio: "ignore" });
+const server = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, PORT: String(port), SUBSCRIPTION_TOKEN: "", SUBSCRIPTION_SIGNING_KEY: "browser-test-signing-key-do-not-use-in-production" }, stdio: "ignore" });
 const base = `http://127.0.0.1:${port}/`;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -58,6 +60,43 @@ try {
   assert.equal((await page.locator("#validationBar span").first().textContent()).trim(), "结构检查通过");
   const initial = await config();
   assert.ok(initial.inbounds.length && initial.outbounds.length && initial.dns.servers.length && initial.route.rules.length);
+
+  // auto 排在前面时，默认流量也必须经过可手动切换的 Selector。
+  assert.equal(initial.outbounds[0].tag, "auto");
+  assert.equal(initial.route.final, "proxy", "默认路由不能绕过手动选择组直接使用 auto");
+  const manualNode = initial.outbounds.find((item) => item.type === "trojan").tag;
+  const proxyGroup = '#groupList .sortable-item[data-id="group-proxy"]';
+  const autoGroup = '#groupList .sortable-item[data-id="group-auto"]';
+  await page.click(`${proxyGroup} .entry-edit`);
+  await page.fill('#groupFields [data-field="defaultMember"]', manualNode);
+  await page.click("#groupForm .primary-button");
+  let selected = await config();
+  assert.equal(selected.route.final, "proxy");
+  assert.equal(selected.outbounds.find((item) => item.tag === selected.route.final).default, manualNode);
+  await page.reload({ waitUntil: "networkidle" });
+  selected = await config();
+  assert.equal(selected.route.final, "proxy", "刷新后仍应通过手动选择组");
+  assert.equal(selected.outbounds.find((item) => item.tag === "proxy").default, manualNode);
+
+  // 显式指定 auto 或 direct 时按用户设置路由，留空才采用自动默认值。
+  await page.selectOption("#routeFinal", "auto");
+  assert.equal((await config()).route.final, "auto");
+  await page.reload({ waitUntil: "networkidle" });
+  assert.equal((await config()).route.final, "auto", "刷新不能覆盖显式指定的 auto");
+  await page.selectOption("#routeFinal", "direct");
+  assert.equal((await config()).route.final, "direct");
+  await page.selectOption("#routeFinal", "");
+  assert.equal((await config()).route.final, "proxy");
+
+  // 没有启用的 Selector 时回退到 URLTest，再回退到节点。
+  await page.click(`${proxyGroup} .entry-toggle`);
+  assert.equal((await config()).route.final, "auto");
+  await page.click(`${autoGroup} .entry-toggle`);
+  const withoutGroups = await config();
+  assert.equal(withoutGroups.route.final, withoutGroups.outbounds[0].tag);
+  await page.click(`${autoGroup} .entry-toggle`);
+  await page.click(`${proxyGroup} .entry-toggle`);
+  assert.equal((await config()).route.final, "proxy");
 
   // 添加出站：必填校验 -> 保存 -> 出现在配置里
   await page.click("#addNodeBtn");
@@ -148,6 +187,8 @@ try {
   }
 
   assert.deepEqual(errors, [], "页面不应有 JS 错误");
+  await testFakeipFlows(browser, base);
+  await testReviewFlows(browser, base);
   console.log("browser flow tests passed");
 } finally {
   await browser.close();

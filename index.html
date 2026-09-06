@@ -55,7 +55,7 @@
         <header class="topbar">
           <button class="mobile-menu" id="mobileMenu" aria-label="打开导航"><span></span><span></span><span></span></button>
           <div class="topbar-copy"><h1 id="currentSectionTitle">基础配置</h1><p>sing-box 1.14.0 配置订阅生成器</p></div>
-          <div class="local-mode"><i></i><span>本地生成，数据不上传</span></div>
+            <div class="local-mode"><i></i><span>配置保存在本地</span></div>
         </header>
 
         <section class="content" id="profiles">
@@ -85,7 +85,7 @@
 
             <div class="group-heading"><div><strong>出站组</strong><span>Selector · URLTest</span></div><div class="group-tools"><b id="groupCount">0</b><button class="subscription-tool" id="addGroupBtn" type="button" title="添加出站组"><svg><use href="#i-plus"/></svg><span>添加</span></button></div></div>
             <div class="endpoint-list sortable-list" id="groupList"></div>
-            <div class="node-foot"><span><i></i><span id="groupSummaryText">0 个出站组</span></span><small>列表中的第一个出站组会作为默认出站</small></div>
+            <div class="node-foot"><span><i></i><span id="groupSummaryText">0 个出站组</span></span><small>默认出站选“自动”时，优先使用第一个可用的手动选择组</small></div>
           </section>
 
           <section class="panel endpoint-panel" id="endpoints">
@@ -401,9 +401,27 @@
         <input type="hidden" id="dnsServerId" />
         <p class="modal-intro" id="dnsServerIntro"></p>
         <div id="dnsServerFields"></div>
+        <section id="fakeipPresetControls" class="fakeip-preset hidden">
+          <div class="group-heading"><div><strong>FakeIP 配套配置</strong><span id="fakeipPresetStatus"></span></div><button type="button" class="secondary-button" id="configureFakeipBtn">一键配置 FakeIP</button></div>
+          <p class="modal-intro">自动补齐真实 DNS、局域网例外、DNS 接管、TUN 和映射缓存。已有节点与分流规则保留，点击保存后才会应用。</p>
+          <label class="field hidden" id="fakeipTunField"><span>使用的 TUN 入站</span><select id="fakeipTunSelect"></select></label>
+          <div id="fakeipPresetPreview" class="hidden" aria-live="polite"></div>
+        </section>
         <div class="modal-error" id="dnsServerFormError"></div>
-        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default">保存 Server</button></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" value="default" id="saveDnsServerBtn">保存 Server</button></div>
       </form>
+    </dialog>
+
+    <dialog class="modal endpoint-modal" id="fakeipRemovalModal">
+      <div class="modal-head"><div><h3>删除 FakeIP</h3><small>是否同时清理一键配置产生的设置？</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+      <p class="modal-intro">自动清理会保留手动修改、原有项目和其他配置仍在使用的部分。仅删除 FakeIP 会保留配套设置，可能留下需要修正的引用。</p>
+      <div class="fakeip-removal-plans">
+        <strong>删除并清理关联配置</strong>
+        <div id="fakeipRemovalPreview" aria-live="polite"></div>
+        <details><summary>预览「仅删除 FakeIP」</summary><div id="fakeipOnlyRemovalPreview"></div></details>
+      </div>
+      <div class="modal-error" id="fakeipRemovalError"></div>
+      <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button type="button" class="secondary-button" id="removeFakeipOnlyBtn">仅删除 FakeIP</button><button type="button" class="primary-button" id="removeFakeipPresetBtn">删除并清理关联配置</button></div>
     </dialog>
 
     <dialog class="modal endpoint-modal" id="dnsRuleModal">
@@ -577,6 +595,7 @@
           <label class="field"><span>有效期</span><select id="subscriptionExpiry"><option value="">永久</option><option value="1">1 天</option><option value="7">7 天</option><option value="30">30 天</option></select></label>
         </div>
         <label class="field"><span>订阅链接</span><div class="copy-field"><input id="subscriptionUrl" readonly /><button id="copySubscriptionBtn" class="secondary-button">复制</button></div></label>
+        <p>生成链接时仅提交配置摘要供服务签名，完整配置仍保存在链接中。</p>
         <div class="link-warning hidden" id="linkWarning">链接较长，节点较多时建议接入持久化存储。</div>
         <div class="link-warning link-guard hidden" id="subscriptionGuard"></div>
         <div class="qr-block">
