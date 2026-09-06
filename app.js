@@ -1458,9 +1458,53 @@ function renderSubscriptionQr(url, importLink) {
 
 let subscriptionRender = 0;
 
+function setSubscriptionTarget(url) {
+  const importLink = `sing-box://import-remote-profile?url=${encodeURIComponent(url)}#${encodeURIComponent(state.settings.profileName || "Sing Profile")}`;
+  $("#openSubscriptionBtn").href = url;
+  $("#importClientBtn").href = importLink;
+  renderSubscriptionQr(url, importLink);
+}
+
+async function updateShortSubscription(url, ticket) {
+  $("#shortSubscriptionStatus").textContent = "正在生成短链接，长链接已可使用…";
+  $("#retryShortSubscriptionBtn").classList.add("hidden");
+  try {
+    // 用户连续输入地址或 token 时，只为最后一次结果保存配置。
+    await new Promise(resolve => setTimeout(resolve, 300));
+    if (ticket !== subscriptionRender || !$("#subscriptionModal").open) return;
+    const longUrl = new URL(url);
+    const endpoint = new URL("api/short-subscription", new URL(".", longUrl));
+    const fields = Object.fromEntries(longUrl.searchParams);
+    const token = fields.token || "";
+    delete fields.token;
+    const response = await fetch(endpoint, {
+      method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(10000),
+      body: JSON.stringify({ fields, token })
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(result?.error || "订阅服务不支持短链接，请更新服务后重试");
+    if (!/^[A-Za-z0-9_-]{32}$/.test(result?.id || "")) throw new Error("订阅服务返回了无效短链接");
+    if (ticket !== subscriptionRender) return;
+    const shortUrl = new URL(`s/${result.id}`, new URL(".", longUrl));
+    if (token) shortUrl.searchParams.set("token", token);
+    $("#shortSubscriptionUrl").value = shortUrl.toString();
+    $("#copyShortSubscriptionBtn").disabled = false;
+    $("#shortSubscriptionStatus").textContent = "短链接已生成，二维码和客户端导入已切换到短链接。";
+    setSubscriptionTarget(shortUrl.toString());
+  } catch (error) {
+    if (ticket !== subscriptionRender) return;
+    $("#shortSubscriptionStatus").textContent = `短链接生成失败：${error.message}。长链接仍可使用。`;
+    $("#retryShortSubscriptionBtn").classList.remove("hidden");
+  }
+}
+
 async function updateSubscriptionFields() {
   const ticket = ++subscriptionRender;
   $("#subscriptionUrl").value = "";
+  $("#shortSubscriptionUrl").value = "";
+  $("#copyShortSubscriptionBtn").disabled = true;
+  $("#shortSubscriptionStatus").textContent = "";
+  $("#retryShortSubscriptionBtn").classList.add("hidden");
   $("#openSubscriptionBtn").removeAttribute("href");
   $("#importClientBtn").removeAttribute("href");
   $("#copySubscriptionBtn").disabled = true;
@@ -1470,13 +1514,11 @@ async function updateSubscriptionFields() {
   try {
     const url = await buildSubscriptionUrl();
     if (ticket !== subscriptionRender) return;
-    const importLink = `sing-box://import-remote-profile?url=${encodeURIComponent(url)}#${encodeURIComponent(state.settings.profileName || "Sing Profile")}`;
     $("#subscriptionUrl").value = url;
-    $("#openSubscriptionBtn").href = url;
-    $("#importClientBtn").href = importLink;
     $("#copySubscriptionBtn").disabled = false;
-    renderSubscriptionQr(url, importLink);
+    setSubscriptionTarget(url);
     updateSubscriptionGuard(ticket);
+    updateShortSubscription(url, ticket);
   } catch (error) {
     if (ticket !== subscriptionRender) return;
     $("#subscriptionUrl").value = "";
@@ -1764,7 +1806,7 @@ $("#generateBtn").addEventListener("click", async () => {
   if (warning) {
     const url = $("#subscriptionUrl").value;
     warning.textContent = url.length >= 8000
-      ? `链接较长（${Math.round(url.length / 1024)} KB），节点较多时建议接入持久化存储。`
+      ? `长链接较长（${Math.round(url.length / 1024)} KB），可使用同时生成的短链接。`
       : `链接内包含 ${exposed} 个节点的完整凭据，部署到公网时请配合 SUBSCRIPTION_TOKEN 与有效期使用。`;
     warning.classList.remove("hidden");
   }
@@ -1773,10 +1815,15 @@ $("#publicBaseUrl").addEventListener("input", updateSubscriptionFields);
 $("#subscriptionToken").addEventListener("input", updateSubscriptionFields);
 $("#subscriptionExpiry").addEventListener("change", updateSubscriptionFields);
 $("#copySubscriptionBtn").addEventListener("click", () => copyText($("#subscriptionUrl").value));
+$("#copyShortSubscriptionBtn").addEventListener("click", () => copyText($("#shortSubscriptionUrl").value));
+$("#retryShortSubscriptionBtn").addEventListener("click", () => {
+  const url = $("#subscriptionUrl").value;
+  if (url) updateShortSubscription(url, subscriptionRender);
+});
 $$(".qr-switch button").forEach((button) => button.addEventListener("click", () => {
   qrMode = button.dataset.qrMode;
   $$(".qr-switch button").forEach((item) => item.classList.toggle("active", item === button));
-  const url = $("#subscriptionUrl").value;
+  const url = $("#shortSubscriptionUrl").value || $("#subscriptionUrl").value;
   if (url) renderSubscriptionQr(url, $("#importClientBtn").href);
 }));
 $("#importClientBtn").addEventListener("click", (event) => {

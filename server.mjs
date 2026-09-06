@@ -7,6 +7,7 @@ import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fetchRemoteSubscription } from "./server/remote-subscription.mjs";
 import { issueSignature, loadSigningKey, verifySignature } from "./server/subscription-signing.mjs";
+import { shortSubscriptionStore } from "./server/short-subscriptions.mjs";
 
 const root = await realpath(fileURLToPath(new URL(".", import.meta.url)));
 const port = Number(process.env.PORT || 4173);
@@ -17,7 +18,9 @@ const rateLimitWindowMs = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
 const rateLimitMax = Number(process.env.RATE_LIMIT_MAX || 60);
 const maxSubscriptionBytes = 512 * 1024;
 const maxRequestBytes = 16 * 1024;
-const signingKey = await loadSigningKey(process.env.STATE_DIRECTORY || join(root, ".data"), process.env.SUBSCRIPTION_SIGNING_KEY || "");
+const stateDirectory = process.env.STATE_DIRECTORY || join(root, ".data");
+const signingKey = await loadSigningKey(stateDirectory, process.env.SUBSCRIPTION_SIGNING_KEY || "");
+const shortSubscriptions = shortSubscriptionStore(stateDirectory, signingKey, { maxEntries: Number(process.env.SHORT_LINK_MAX_ENTRIES || 1000) });
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -131,12 +134,12 @@ function sendJson(res, status, value, headers = {}) {
   });
 }
 
-async function readJsonBody(req) {
+async function readJsonBody(req, limit = maxRequestBytes) {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > maxRequestBytes) throw new Error("请求内容过大");
+    if (size > limit) throw new Error("请求内容过大");
     chunks.push(chunk);
   }
   try {
@@ -169,7 +172,7 @@ async function handleRequest(req, res) {
 
   // 供生成页探测目标服务器的要求（不含任何秘密，允许跨域读取）
   if (requestUrl.pathname === "/api/status") {
-    return send(res, 200, JSON.stringify({ tokenRequired: Boolean(subscriptionToken), signatureVersion: 1, rateLimit: { windowMs: rateLimitWindowMs, max: rateLimitMax } }) + "\n", {
+    return send(res, 200, JSON.stringify({ tokenRequired: Boolean(subscriptionToken), signatureVersion: 1, shortLinks: true, rateLimit: { windowMs: rateLimitWindowMs, max: rateLimitMax } }) + "\n", {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
       "access-control-allow-origin": "*"
@@ -189,7 +192,27 @@ async function handleRequest(req, res) {
     } catch (error) { return sendJson(res, 400, { error: error.message }, cors); }
   }
 
-  if (requestUrl.pathname === "/subscription") {
+  if (requestUrl.pathname === "/api/short-subscription") {
+    const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
+    if (req.method === "OPTIONS") return send(res, 204, "", cors);
+    if (req.method !== "POST") return send(res, 405, "Method not allowed\n", { ...cors, allow: "POST, OPTIONS" });
+    if (rateLimited(`${clientKey(req)}:short`)) return sendJson(res, 429, { error: "请求过于频繁，请稍后再试" }, cors);
+    try {
+      const body = await readJsonBody(req, maxSubscriptionBytes + maxRequestBytes);
+      if (subscriptionToken && !timingSafeEqual(body?.token || "", subscriptionToken)) return sendJson(res, 401, { error: "请填写与 SUBSCRIPTION_TOKEN 一致的访问 token" }, cors);
+      const fields = {};
+      for (const key of ["data", "enc", "name", "interval", "sigv", "expires", "sig"]) {
+        if (typeof body?.fields?.[key] !== "string") throw new Error("短链接需要完整的已签名订阅");
+        fields[key] = body.fields[key];
+      }
+      const error = verifySignature(signingKey, new URLSearchParams(fields));
+      if (error) return sendJson(res, error.status, { error: error.error }, cors);
+      decodeSubscription(fields.data, fields.enc);
+      return sendJson(res, 200, { id: await shortSubscriptions.save(fields) }, cors);
+    } catch (error) { return sendJson(res, 400, { error: error.message }, cors); }
+  }
+
+  if (requestUrl.pathname === "/subscription" || requestUrl.pathname.startsWith("/s/")) {
     if (rateLimited(clientKey(req))) {
       return send(res, 429, "Too many requests\n", { "retry-after": String(Math.ceil(rateLimitWindowMs / 1000)) });
     }
@@ -197,6 +220,12 @@ async function handleRequest(req, res) {
       return send(res, 401, "Unauthorized: this server requires a subscription token. Regenerate the link with the same token as SUBSCRIPTION_TOKEN.\n", { "cache-control": "no-store" });
     }
     if (!["GET", "HEAD"].includes(req.method)) return send(res, 405, "Method not allowed\n", { allow: "GET, HEAD" });
+    if (requestUrl.pathname.startsWith("/s/")) {
+      if ([...requestUrl.searchParams.keys()].some(key => !["token", "download"].includes(key)) || requestUrl.searchParams.getAll("token").length > 1) return sendJson(res, 400, { error: "短链接不支持覆盖订阅参数" });
+      const fields = await shortSubscriptions.read(requestUrl.pathname.slice(3));
+      if (!fields) return sendJson(res, 404, { error: "短链接不存在或已清理" });
+      for (const [key, value] of Object.entries(fields)) requestUrl.searchParams.set(key, value);
+    }
     if ((requestUrl.searchParams.get("data") || "").length > maxSubscriptionBytes) return sendJson(res, 400, { error: "订阅数据过大" });
     const signatureError = verifySignature(signingKey, requestUrl.searchParams);
     if (signatureError) return sendJson(res, signatureError.status, { error: signatureError.error });

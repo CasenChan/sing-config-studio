@@ -47,6 +47,12 @@ export async function testHttpSubscription(browser, base) {
     changed.searchParams.set("expires", "0");
     assert.equal(await page.evaluate(async url => (await fetch(url)).status, changed.toString()), 401);
     assert.equal(await page.locator("#subscriptionQr svg").count(), 1);
+    await page.waitForFunction(() => document.querySelector("#shortSubscriptionUrl").value.includes("/s/"));
+    const short = await page.locator("#shortSubscriptionUrl").inputValue();
+    assert.equal(new URL(short).origin, address.origin);
+    assert.equal(await page.evaluate(async url => (await fetch(url)).status, short), 200);
+    await page.click("#copyShortSubscriptionBtn");
+    assert.deepEqual(await page.evaluate(() => window.copyAttempt), { selected: short, success: true });
     assert.ok(bodies.length >= 2);
     for (const body of bodies) {
       assert.deepEqual(Object.keys(body).sort(), ["days", "digest", "token"]);

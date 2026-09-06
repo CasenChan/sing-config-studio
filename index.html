@@ -594,8 +594,11 @@
           <label class="field"><span>访问 token</span><input id="subscriptionToken" placeholder="与 SUBSCRIPTION_TOKEN 一致" autocomplete="off" /></label>
           <label class="field"><span>有效期</span><select id="subscriptionExpiry"><option value="">永久</option><option value="1">1 天</option><option value="7">7 天</option><option value="30">30 天</option></select></label>
         </div>
-        <label class="field"><span>订阅链接</span><div class="copy-field"><input id="subscriptionUrl" readonly /><button id="copySubscriptionBtn" class="secondary-button">复制</button></div></label>
-        <p>生成链接时仅提交配置摘要供服务签名，完整配置仍保存在链接中。</p>
+        <label class="field"><span>长链接</span><div class="copy-field"><input id="subscriptionUrl" readonly /><button id="copySubscriptionBtn" class="secondary-button">复制</button></div></label>
+        <label class="field"><span>短链接</span><div class="copy-field"><input id="shortSubscriptionUrl" readonly placeholder="生成长链接后自动创建" /><button id="copyShortSubscriptionBtn" class="secondary-button" disabled>复制</button></div></label>
+        <p id="shortSubscriptionStatus" role="status"></p>
+        <button id="retryShortSubscriptionBtn" type="button" class="secondary-button hidden">重试生成短链接</button>
+        <p>短链接将配置保存在当前订阅服务器，沿用长链接的有效期；二维码和客户端导入优先使用短链接。</p>
         <div class="link-warning hidden" id="linkWarning">链接较长，节点较多时建议接入持久化存储。</div>
         <div class="link-warning link-guard hidden" id="subscriptionGuard"></div>
         <div class="qr-block">
@@ -615,6 +618,6 @@
     </dialog>
 
     <div class="toast" id="toast" role="status"><svg><use href="#i-check"/></svg><span>已复制</span></div>
-    <script type="module" src="/app.js?v=18"></script>
+    <script type="module" src="/app.js?v=19"></script>
   </body>
 </html>

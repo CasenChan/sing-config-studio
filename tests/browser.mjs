@@ -1,12 +1,13 @@
 // 浏览器流程测试：添加、编辑、取消、删除、导入、冲突拦截与生成订阅。
 // 需要 playwright-core 与一个本机 Chrome/Chromium；缺任一条件时跳过而不是失败。
-import { spawn } from "node:child_process";
+import { startTestServer } from "./server-helper.mjs";
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import assert from "node:assert/strict";
 import { testFakeipFlows } from "./fakeip-browser.mjs";
 import { testReviewFlows } from "./review-browser.mjs";
 import { testHttpSubscription } from "./http-browser.mjs";
+import { testShortSubscription } from "./short-browser.mjs";
 
 const require = createRequire(import.meta.url);
 const CHROME_CANDIDATES = [
@@ -31,9 +32,8 @@ if (!executablePath) {
   process.exit(0);
 }
 
-const port = Number(process.env.TEST_PORT || 4199);
-const server = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, PORT: String(port), SUBSCRIPTION_TOKEN: "", SUBSCRIPTION_SIGNING_KEY: "browser-test-signing-key-do-not-use-in-production" }, stdio: "ignore" });
-const base = `http://127.0.0.1:${port}/`;
+const server = await startTestServer({ PORT: process.env.TEST_PORT || "0" });
+const base = `${server.base}/`;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 for (let attempt = 0; attempt < 40; attempt += 1) {
   try {
@@ -161,6 +161,7 @@ try {
   assert.equal(await page.locator("#subscriptionModal").evaluate((el) => el.open), true);
   assert.match(await page.locator("#subscriptionUrl").inputValue(), /\/subscription\?data=/);
   // 订阅二维码：有 BarcodeDetector 时真解码，内容必须等于客户端导入链接
+  await page.waitForFunction(() => document.querySelector("#shortSubscriptionUrl").value.includes("/s/"));
   assert.equal(await page.locator("#subscriptionQr svg").count(), 1, "应渲染出二维码");
   const decoded = await page.evaluate(async () => {
     if (!("BarcodeDetector" in window)) return "skip";
@@ -191,8 +192,9 @@ try {
   await testFakeipFlows(browser, base);
   await testReviewFlows(browser, base);
   await testHttpSubscription(browser, base);
+  await testShortSubscription(browser, base);
   console.log("browser flow tests passed");
 } finally {
   await browser.close();
-  server.kill();
+  await server.close();
 }
