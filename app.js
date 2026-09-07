@@ -21,6 +21,7 @@ import { hasFakeipPreset, planFakeipPreset, planFakeipRemoval, planFakeipServerS
 import { subscriptionPayload } from "./modules/subscription-payload.js";
 import { sha256 } from "./modules/sha256.js";
 import { planChinaRouting } from "./modules/china-routing.js";
+import { rewriteOutboundReferences } from "./modules/references.js";
 import {
   SERVICE_TYPE_META,
   normalizeService,
@@ -62,7 +63,9 @@ import {
 import {
   DNS_RULE_ACTION_META,
   DNS_SERVER_TYPE_META,
-  defaultDomainResolverTag,
+  buildDefaultDomainResolver,
+  domainResolverServer,
+  parseDomainResolver,
   dnsModule,
   normalizeDnsRule,
   normalizeDnsServer,
@@ -240,6 +243,10 @@ const defaultState = planChinaRouting({
 }).state;
 
 let state = loadState();
+let generatedConfigText = "";
+let subscriptionSnapshot = null;
+let stateRevision = 0;
+const remoteSubscriptionRequests = new Map();
 let toastTimer;
 
 function clone(value) {
@@ -365,7 +372,7 @@ function generateConfig() {
     inboundTags: activeInboundTags(state.inbounds || []),
     tunEnabled: hasTunInbound(state.inbounds || []),
     fallbackFinal: defaultFinalOutbound(),
-    defaultDomainResolver: defaultDomainResolverTag(state.dns)
+    defaultDomainResolver: buildDefaultDomainResolver(state.dns)
   });
   return cleanObject(config);
 }
@@ -397,8 +404,14 @@ function validateConfigText(text) {
     const config = JSON.parse(text);
     if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("顶层必须是 JSON 对象");
     if (!Array.isArray(config.inbounds) || !config.inbounds.length) throw new Error("至少需要一个 inbound");
-    if (!Array.isArray(config.outbounds) || !config.outbounds.length) throw new Error("至少需要一个 outbound");
-    const tags = config.outbounds.map((item) => item.tag).filter(Boolean);
+    const outbounds = config.outbounds ?? [];
+    const endpoints = config.endpoints ?? [];
+    if (config.outbounds !== undefined && !Array.isArray(config.outbounds) || config.endpoints !== undefined && !Array.isArray(config.endpoints)) throw new Error("outbounds 和 endpoints 必须是数组");
+    if (!outbounds.length && !endpoints.length) throw new Error("至少需要一个 outbound 或 endpoint");
+    for (const [name, entries] of Object.entries({ inbounds: config.inbounds, outbounds, endpoints })) {
+      if (entries.some(item => !item || typeof item !== "object" || Array.isArray(item))) throw new Error(name + " 必须由配置对象组成");
+    }
+    const tags = outbounds.map((item) => item.tag).filter(Boolean);
     if (new Set(tags).size !== tags.length) throw new Error("outbound tag 不能重复");
     const endpointTags = Array.isArray(config.endpoints) ? config.endpoints.map((item) => item.tag).filter(Boolean) : [];
     if (new Set(endpointTags).size !== endpointTags.length) throw new Error("endpoint tag 不能重复");
@@ -407,8 +420,9 @@ function validateConfigText(text) {
     if (new Set(dnsTags).size !== dnsTags.length) throw new Error("DNS server tag 不能重复");
     if (!Array.isArray(config.dns?.servers) || !config.dns.servers.length) throw new Error("至少需要一个 DNS server");
     if (config.dns.final && !dnsTags.includes(config.dns.final)) throw new Error(`dns.final 引用的服务器不存在：${config.dns.final}`);
-    if (config.route?.default_domain_resolver && !dnsTags.includes(config.route.default_domain_resolver)) {
-      throw new Error(`默认域名解析器不存在：${config.route.default_domain_resolver}`);
+    const resolverTag = domainResolverServer(config.route?.default_domain_resolver);
+    if (config.route?.default_domain_resolver && (!resolverTag || !dnsTags.includes(resolverTag))) {
+      throw new Error("默认域名解析器不存在：" + resolverTag);
     }
     const missingDnsServer = (config.dns.rules || []).find((rule) => rule.server && !dnsTags.includes(rule.server));
     if (missingDnsServer) throw new Error(`DNS 规则引用的服务器不存在：${missingDnsServer.server}`);
@@ -607,7 +621,8 @@ function renderConfig({ persist = true } = {}) {
     if (persist) saveState();
     return;
   }
-  $("#configOutput").value = JSON.stringify(config, null, 2);
+  generatedConfigText = JSON.stringify(config, null, 2);
+  $("#configOutput").value = generatedConfigText;
   validateOutput();
   $("#summaryNodes").textContent = state.nodes.filter(nodeIsComplete).length;
   $("#summaryEndpoints").textContent = state.endpoints.length;
@@ -618,12 +633,20 @@ function renderConfig({ persist = true } = {}) {
   updateRouteSummary();
   syncRouteOutboundOptions();
   syncServiceInputs();
-  refreshConflicts(config);
   if (persist) saveState();
 }
 
 function validateOutput() {
-  const result = validateConfigText($("#configOutput").value);
+  let result = validateConfigText($("#configOutput").value);
+  const fromEditor = $("#configOutput").value !== generatedConfigText;
+  if (result.valid) {
+    try { refreshConflicts(result.config, { fromEditor }); }
+    catch (error) { result = { valid: false, error: "配置结构无效：" + error.message }; }
+  }
+  if (!result.valid) {
+    currentConflicts = [{ level: "error", scope: "JSON", message: result.error }];
+    renderConflicts(currentConflicts);
+  }
   const status = $(".code-status");
   const bar = $("#validationBar");
   status.classList.toggle("invalid", !result.valid);
@@ -631,6 +654,7 @@ function validateOutput() {
   bar.classList.toggle("invalid", !result.valid);
   $("span", bar).textContent = result.valid ? "结构检查通过" : result.error;
   $("#deprecatedCount").textContent = result.valid ? result.deprecated.length : "—";
+  $("#editorSourceNote").classList.toggle("hidden", !fromEditor);
   return result;
 }
 
@@ -1265,11 +1289,12 @@ function parseSubscriptionContent(content, allowBase64 = true) {
   throw new Error("未识别订阅格式；请使用 sing-box JSON 或明文/Base64 分享链接订阅");
 }
 
-async function readRemoteSubscription(url) {
+async function readRemoteSubscription(url, signal) {
   const response = await fetch("/api/fetch-subscription", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ url })
+    body: JSON.stringify({ url }),
+    signal
   });
   let result;
   try { result = await response.json(); } catch { throw new Error("订阅读取服务返回了无效响应"); }
@@ -1309,9 +1334,21 @@ function defaultSubscriptionName(value) {
   try { return new URL(value).hostname; } catch { return "节点订阅"; }
 }
 
+function cancelRemoteSubscription(id) {
+  remoteSubscriptionRequests.get(id)?.controller.abort();
+  remoteSubscriptionRequests.delete(id);
+}
+
 async function refreshRemoteSubscription(subscription) {
+  cancelRemoteSubscription(subscription.id);
+  const request = { controller: new AbortController(), revision: stateRevision, url: subscription.url };
+  remoteSubscriptionRequests.set(subscription.id, request);
+  const current = () => remoteSubscriptionRequests.get(subscription.id) === request
+    && request.revision === stateRevision && subscription.url === request.url
+    && state.subscriptions.find(item => item.id === subscription.id) === subscription;
   try {
-    const parsed = await readRemoteSubscription(subscription.url);
+    const parsed = await readRemoteSubscription(request.url, request.controller.signal);
+    if (!current()) return { cancelled: true };
     const nodes = prepareSubscriptionNodes(parsed.nodes, subscription.id, subscription.id);
     if (!nodes.length) throw new Error("订阅中没有完整且受支持的节点");
     const previous = state.nodes.filter((node) => node.subscriptionId === subscription.id);
@@ -1325,10 +1362,13 @@ async function refreshRemoteSubscription(subscription) {
     refreshOutbounds();
     return { count: nodes.length, rejected: parsed.rejected + (parsed.nodes.length - nodes.length), diff: subscription.lastDiff };
   } catch (error) {
+    if (!current() || request.controller.signal.aborted) return { cancelled: true };
     subscription.lastError = error.message;
     subscription.lastCheck = Date.now();
     renderNodes();
     throw error;
+  } finally {
+    if (remoteSubscriptionRequests.get(subscription.id) === request) remoteSubscriptionRequests.delete(subscription.id);
   }
 }
 
@@ -1374,18 +1414,18 @@ async function encodeSubscriptionData(json) {
 }
 
 async function buildSubscriptionUrl() {
-  const validation = validateConfigText($("#configOutput").value);
-  if (!validation.valid) throw new Error(validation.error);
+  if (!subscriptionSnapshot) throw new Error("请先确认要生成订阅的配置");
+  const snapshot = subscriptionSnapshot;
+  const token = $("#subscriptionToken")?.value.trim();
+  const days = Number($("#subscriptionExpiry")?.value || 0);
   const base = subscriptionBase();
   const endpoint = new URL("subscription", base);
-  const encoded = await encodeSubscriptionData(JSON.stringify(validation.config));
+  const encoded = await encodeSubscriptionData(JSON.stringify(snapshot.config));
   endpoint.searchParams.set("data", encoded.data);
   endpoint.searchParams.set("enc", encoded.enc);
-  endpoint.searchParams.set("name", safeFilename(state.settings.profileName));
+  endpoint.searchParams.set("name", safeFilename(snapshot.profileName));
   endpoint.searchParams.set("interval", "60");
-  const token = $("#subscriptionToken")?.value.trim();
   if (token) endpoint.searchParams.set("token", token);
-  const days = Number($("#subscriptionExpiry")?.value || 0);
   const payload = subscriptionPayload(Object.fromEntries(endpoint.searchParams));
   const digest = await sha256(payload);
   const response = await fetch(new URL("api/sign-subscription", base), {
@@ -1460,7 +1500,7 @@ function renderSubscriptionQr(url, importLink) {
 let subscriptionRender = 0;
 
 function setSubscriptionTarget(url) {
-  const importLink = `sing-box://import-remote-profile?url=${encodeURIComponent(url)}#${encodeURIComponent(state.settings.profileName || "Sing Profile")}`;
+  const importLink = `sing-box://import-remote-profile?url=${encodeURIComponent(url)}#${encodeURIComponent(subscriptionSnapshot?.profileName || "Sing Profile")}`;
   $("#openSubscriptionBtn").href = url;
   $("#importClientBtn").href = importLink;
   renderSubscriptionQr(url, importLink);
@@ -1539,7 +1579,7 @@ function handleSettingsChange() {
   renderConfig();
 }
 
-$$('input, select', $("#profiles")).forEach((input) => input.addEventListener("input", handleSettingsChange));
+$$('input, select, textarea:not(#configOutput)', $("#profiles")).forEach((input) => input.addEventListener("input", handleSettingsChange));
 $("#configOutput").addEventListener("input", validateOutput);
 $("#tailscaleExitNode").addEventListener("input", updateTailscaleFormVisibility);
 $("#tailscaleMagicDns").addEventListener("change", updateTailscaleFormVisibility);
@@ -1584,6 +1624,7 @@ $("#remoteSubscriptionForm").addEventListener("submit", async (event) => {
     state.subscriptions.push(subscription);
     try {
       const result = await refreshRemoteSubscription(subscription);
+      if (result.cancelled) return;
       $("#remoteSubscriptionModal").close();
       showToast(`已从订阅添加 ${result.count} 个节点${result.rejected ? `，忽略 ${result.rejected} 项` : ""}`, Boolean(result.rejected));
     } catch (error) {
@@ -1605,6 +1646,7 @@ $("#subscriptionSources").addEventListener("click", async (event) => {
   if (!subscription) return;
   if (button.classList.contains("delete-subscription")) {
     if (!confirm(`删除订阅“${subscription.name}”及其节点吗？`)) return;
+    cancelRemoteSubscription(subscription.id);
     state.subscriptions = state.subscriptions.filter((item) => item.id !== subscription.id);
     state.nodes = state.nodes.filter((node) => node.subscriptionId !== subscription.id);
     renderNodes();
@@ -1615,6 +1657,7 @@ $("#subscriptionSources").addEventListener("click", async (event) => {
     button.disabled = true;
     try {
       const result = await refreshRemoteSubscription(subscription);
+      if (result.cancelled) return;
       const diffText = result.diff && (result.diff.added || result.diff.removed) ? `，新增 ${result.diff.added} 个、移除 ${result.diff.removed} 个` : "";
       showToast(`订阅已更新：${result.count} 个节点${diffText}${result.rejected ? `，忽略 ${result.rejected} 项` : ""}`, Boolean(result.rejected));
     } catch (error) {
@@ -1791,24 +1834,26 @@ function focusConflicts() {
 }
 
 $("#generateBtn").addEventListener("click", async () => {
-  renderConfig();
+  // 输出编辑器是本次生成的唯一来源，不能在这里用表单覆盖用户的 JSON。
   const validation = validateOutput();
   if (!validation.valid) return showToast(validation.error, true);
   if (hasBlockingConflicts(currentConflicts)) {
     focusConflicts();
     return showToast(`存在 ${summarizeConflicts(currentConflicts).errors} 项配置冲突，请先修正后再生成链接`, true);
   }
-  if (!state.nodes.some(nodeIsComplete)) return showToast("请先添加至少一个完整节点", true);
+  subscriptionSnapshot = { config: clone(validation.config), profileName: state.settings.profileName };
+  const snapshot = subscriptionSnapshot;
   $("#publicBaseUrl").value = defaultPublicBase();
   $("#subscriptionModal").showModal();
   await updateSubscriptionFields();
-  const exposed = state.nodes.filter(nodeIsComplete).length;
+  if (snapshot !== subscriptionSnapshot || !$("#subscriptionModal").open) return;
+  const exposed = (validation.config.outbounds || []).filter(item => !["direct", "selector", "urltest"].includes(item.type)).length;
   const warning = $("#linkWarning");
   if (warning) {
     const url = $("#subscriptionUrl").value;
     warning.textContent = url.length >= 8000
       ? `长链接较长（${Math.round(url.length / 1024)} KB），可使用同时生成的短链接。`
-      : `链接内包含 ${exposed} 个节点的完整凭据，部署到公网时请配合 SUBSCRIPTION_TOKEN 与有效期使用。`;
+      : `链接内包含当前配置的完整凭据（${exposed} 个节点、${(validation.config.endpoints || []).length} 个端点），部署到公网时请配合 SUBSCRIPTION_TOKEN 与有效期使用。`;
     warning.classList.remove("hidden");
   }
 });
@@ -1835,6 +1880,10 @@ $("#importClientBtn").addEventListener("click", (event) => {
   }
 });
 $("#closeSubscription").addEventListener("click", () => $("#subscriptionModal").close());
+$("#subscriptionModal").addEventListener("close", () => {
+  subscriptionRender += 1;
+  subscriptionSnapshot = null;
+});
 
 $("#resetBtn").addEventListener("click", () => {
   if (!confirm("恢复演示配置？当前浏览器内保存的节点会被覆盖。")) return;
@@ -2226,6 +2275,8 @@ function commitState(nextState, reason) {
     } catch {}
     throw new Error(`无法保存备份或配置，当前配置未覆盖：${error.message}`);
   }
+  stateRevision += 1;
+  for (const id of remoteSubscriptionRequests.keys()) cancelRemoteSubscription(id);
   state = nextState;
   renderAllPanels({ persist: false });
 }
@@ -2395,12 +2446,14 @@ function syncDnsInputs() {
   const serverTags = (dns.servers || []).filter((server) => server.enabled !== false).map((server) => String(server.tag || "").trim()).filter(Boolean);
   const fillSelect = (selector, value, placeholder) => {
     const select = $(selector);
-    const options = [`<option value="">${placeholder}</option>`, ...serverTags.map((tag) => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`)];
+    const choices = value && !serverTags.includes(value) ? [value, ...serverTags] : serverTags;
+    const options = [`<option value="">${placeholder}</option>`, ...choices.map((tag) => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`)];
     select.innerHTML = options.join("");
-    select.value = serverTags.includes(value) ? value : "";
+    select.value = value;
   };
   fillSelect("#dnsFinal", String(dns.final || "").trim(), "使用第一个 Server");
-  fillSelect("#dnsDefaultResolver", String(dns.defaultDomainResolver || "").trim(), "自动选择 Local Server");
+  fillSelect("#dnsDefaultResolver", domainResolverServer(dns.defaultDomainResolver), "自动选择 Local Server");
+  updateDnsResolverDetails();
   $("#dnsStrategy").value = dns.strategy || "";
   $("#dnsTimeout").value = dns.timeout || "";
   $("#dnsCacheCapacity").value = dns.cacheCapacity || "";
@@ -2413,11 +2466,20 @@ function syncDnsInputs() {
   updateDnsDependentFields();
 }
 
+function updateDnsResolverDetails() {
+  const resolver = parseDomainResolver(state.dns.defaultDomainResolver);
+  const { server, ...options } = typeof resolver === "object" ? resolver : {};
+  const note = $("#dnsResolverDetails");
+  note.textContent = Object.keys(options).length ? "保留解析选项：" + JSON.stringify(options) : "";
+}
+
 function readDnsSettings() {
+  const previous = parseDomainResolver(state.dns.defaultDomainResolver);
+  const selected = $("#dnsDefaultResolver").value;
   state.dns = {
     ...state.dns,
     final: $("#dnsFinal").value,
-    defaultDomainResolver: $("#dnsDefaultResolver").value,
+    defaultDomainResolver: selected && typeof previous === "object" ? { ...previous, server: selected } : selected,
     strategy: $("#dnsStrategy").value,
     timeout: $("#dnsTimeout").value.trim(),
     cacheCapacity: $("#dnsCacheCapacity").value.trim(),
@@ -2428,6 +2490,7 @@ function readDnsSettings() {
     disableExpire: $("#dnsDisableExpire").checked,
     reverseMapping: $("#dnsReverseMapping").checked
   };
+  updateDnsResolverDetails();
 }
 
 function updateDnsSummary() {
@@ -3194,6 +3257,7 @@ function syncRouteInputs() {
   $("#routeAutoDetect").value = route.autoDetectInterface || "auto";
   $("#routeDefaultInterface").value = route.defaultInterface || "";
   $("#routeDefaultMark").value = route.defaultMark || "";
+  $("#routeDefaultHttpClient").value = route.defaultHttpClient || "";
   $("#routeNetworkStrategy").value = route.defaultNetworkStrategy || "";
   $("#routeNetworkType").value = route.defaultNetworkType || "";
   $("#routeFallbackNetworkType").value = route.defaultFallbackNetworkType || "";
@@ -3221,6 +3285,7 @@ function readRouteSettings() {
     autoDetectInterface: $("#routeAutoDetect").value,
     defaultInterface: $("#routeDefaultInterface").value.trim(),
     defaultMark: $("#routeDefaultMark").value.trim(),
+    defaultHttpClient: $("#routeDefaultHttpClient").value.trim(),
     defaultNetworkStrategy: $("#routeNetworkStrategy").value,
     defaultNetworkType: $("#routeNetworkType").value.trim(),
     defaultFallbackNetworkType: $("#routeFallbackNetworkType").value.trim(),
@@ -3852,12 +3917,12 @@ function renderConflicts(issues) {
   if (count) count.textContent = issues.length;
 }
 
-function refreshConflicts(config) {
+function refreshConflicts(config, { fromEditor = false } = {}) {
   currentConflicts = detectConflicts(config, {
-    moduleIssues: collectModuleIssues(),
-    skippedRules: skippedRouteRules(state.route, availableOutboundTags()),
+    moduleIssues: fromEditor ? [] : collectModuleIssues(),
+    skippedRules: fromEditor ? [] : skippedRouteRules(state.route, availableOutboundTags()),
     clashApiAddress: config.experimental?.clash_api?.external_controller || "",
-    detourCycles: detectDetourCycles(state.nodes, state.groups || [])
+    detourCycles: fromEditor ? [] : detectDetourCycles(state.nodes, state.groups || [])
   });
   renderConflicts(currentConflicts);
   return currentConflicts;
@@ -4371,7 +4436,13 @@ $("#nodeForm").addEventListener("submit", (event) => {
   const error = validateOutbound(node, nodeValidationContext());
   if (error) return $("#nodeFormError").textContent = error;
   const index = state.nodes.findIndex((item) => item.id === node.id);
-  if (index >= 0) state.nodes[index] = node;
+  if (index >= 0 && state.nodes[index].tag !== node.tag) {
+    const previousTag = state.nodes[index].tag;
+    const candidate = clone(state);
+    candidate.nodes[index] = node;
+    try { commitState(rewriteOutboundReferences(candidate, [[previousTag, node.tag]]), "出站改名前"); }
+    catch (error) { return $("#nodeFormError").textContent = error.message; }
+  } else if (index >= 0) state.nodes[index] = node;
   else state.nodes.push(node);
   $("#nodeModal").close();
   refreshOutbounds();
@@ -4384,7 +4455,13 @@ $("#groupForm").addEventListener("submit", (event) => {
   const error = validateGroup(group, groupValidationContext());
   if (error) return $("#groupFormError").textContent = error;
   const index = state.groups.findIndex((item) => item.id === group.id);
-  if (index >= 0) state.groups[index] = group;
+  if (index >= 0 && state.groups[index].tag !== group.tag) {
+    const previousTag = state.groups[index].tag;
+    const candidate = clone(state);
+    candidate.groups[index] = group;
+    try { commitState(rewriteOutboundReferences(candidate, [[previousTag, group.tag]]), "出站组改名前"); }
+    catch (error) { return $("#groupFormError").textContent = error.message; }
+  } else if (index >= 0) state.groups[index] = group;
   else state.groups.push(group);
   $("#groupModal").close();
   refreshOutbounds();
@@ -4608,7 +4685,7 @@ function renderServices() {
 }
 
 const SERVICE_TEXT_FIELDS = [
-  "ntpServer", "ntpServerPort", "ntpInterval", "certificatePath", "certificateDirectoryPath", "cachePath", "cacheId",
+  "httpClientsJson", "ntpServer", "ntpServerPort", "ntpInterval", "certificatePath", "certificateDirectoryPath", "cachePath", "cacheId",
   "cacheRdrcTimeout", "clashController", "clashSecret", "clashExternalUi", "clashExternalUiDownloadUrl", "clashAllowOrigin",
   "v2rayListen", "v2rayStatsInbounds", "v2rayStatsOutbounds"
 ];
@@ -4786,15 +4863,25 @@ function applyTidy(nodes, options) {
   const filtered = filterNodes(nodes, options);
   let result = filtered.nodes;
   let removedByDedupe = 0;
+  let dedupeReplacements = [];
   if (options.dedupe) {
     const deduped = dedupeNodes(result);
     result = deduped.nodes;
     removedByDedupe = deduped.removed;
+    dedupeReplacements = deduped.tagReplacements;
   }
   const keptIds = new Set(result.map((node) => node.id));
   const removedTags = nodes.filter((node) => !keptIds.has(node.id)).map((node) => String(node.tag || ""));
+  const beforeRename = result;
   if (options.prefix || options.suffix || options.search) result = renameNodes(result, options);
-  return { nodes: result, removedByFilter: filtered.removed, removedByDedupe, removedTags };
+  const renameMap = new Map(beforeRename.map((node, index) => [node.tag, result[index].tag]));
+  const tagReplacements = [...renameMap, ...dedupeReplacements.map(([from, to]) => [from, renameMap.get(to) || to])];
+  const reserved = new Set([...(state.groups || []), ...(state.endpoints || [])].map(item => item.tag));
+  for (const node of result) {
+    if (!node.tag || reserved.has(node.tag)) throw new Error("整理后的节点标签为空或重复：" + node.tag);
+    reserved.add(node.tag);
+  }
+  return { nodes: result, removedByFilter: filtered.removed, removedByDedupe, removedTags, tagReplacements };
 }
 
 $("#tidyNodesBtn").addEventListener("click", () => {
@@ -4807,7 +4894,10 @@ $("#tidyNodesBtn").addEventListener("click", () => {
 
 $("#tidyPreviewBtn").addEventListener("click", () => {
   const options = readTidyOptions();
-  const result = applyTidy(state.nodes, options);
+  let result;
+  try { result = applyTidy(state.nodes, options); }
+  catch (error) { return $("#tidyError").textContent = error.message; }
+  $("#tidyError").textContent = "";
   const renamed = result.nodes.filter((node, index) => node.tag !== state.nodes.find((item) => item.id === node.id)?.tag).length;
   $("#tidyPreview").innerHTML = `<ul class="conflict-list">
     <li class="conflict-item"><span class="conflict-scope">结果</span><span>${state.nodes.length} → ${result.nodes.length} 个节点</span></li>
@@ -4821,9 +4911,13 @@ $("#tidyPreviewBtn").addEventListener("click", () => {
 $("#tidyForm").addEventListener("submit", (event) => {
   event.preventDefault();
   const options = readTidyOptions();
-  const result = applyTidy(state.nodes, options);
-  if (!result.nodes.length) return $("#tidyError").textContent = "整理后没有剩下任何节点，请调整条件";
-  state.nodes = result.nodes.map(normalizeOutbound);
+  let result;
+  try {
+    result = applyTidy(state.nodes, options);
+    if (!result.nodes.length) return $("#tidyError").textContent = "整理后没有剩下任何节点，请调整条件";
+    const candidate = { ...state, nodes: result.nodes.map(normalizeOutbound) };
+    commitState(rewriteOutboundReferences(candidate, result.tagReplacements), "整理节点前");
+  } catch (error) { return $("#tidyError").textContent = error.message; }
   $("#tidyModal").close();
   refreshOutbounds();
   showToast(`整理完成：${result.nodes.length} 个节点`);

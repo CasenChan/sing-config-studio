@@ -1,4 +1,4 @@
-import { normalizeDnsState, normalizeDnsServer, dnsModule, defaultDomainResolverTag } from "../modules/dns.js";
+import { normalizeDnsState, normalizeDnsServer, dnsModule, buildDefaultDomainResolver } from "../modules/dns.js";
 import { normalizeRouteState, routeModule } from "../modules/route.js";
 import { normalizeServiceState, serviceModule } from "../modules/services.js";
 import { inboundModule } from "../modules/inbound.js";
@@ -18,7 +18,7 @@ export function configFromState(state) {
   const context = {
     outboundTags: [...config.outbounds, ...state.endpoints].map((item) => item.tag),
     tunEnabled: state.inbounds.some((item) => item.enabled !== false && item.type === "tun"),
-    defaultDomainResolver: defaultDomainResolverTag(state.dns),
+    defaultDomainResolver: buildDefaultDomainResolver(state.dns),
     fallbackFinal: (config.outbounds.find((item) => item.type === "selector") || config.outbounds[0])?.tag
   };
   for (const module of [inboundModule, dnsModule, routeModule, tailscaleModule, endpointFamilyModule, serviceModule]) config = module.extendConfig(config, state, context);

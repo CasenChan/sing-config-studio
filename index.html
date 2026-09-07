@@ -7,7 +7,7 @@
     <meta name="description" content="sing-box 1.14.0 配置与订阅链接生成器" />
     <title>sing-box · 配置生成器</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=19" />
+    <link rel="stylesheet" href="/styles.css?v=20" />
   </head>
   <body>
     <svg class="svg-sprite" aria-hidden="true">
@@ -115,7 +115,7 @@
             </div>
             <div class="form-grid four dns-fields">
               <label class="field"><span>默认 Server <em>final</em></span><select id="dnsFinal"></select></label>
-              <label class="field"><span>默认域名解析器</span><select id="dnsDefaultResolver"></select></label>
+              <label class="field"><span>默认域名解析器</span><select id="dnsDefaultResolver"></select><small id="dnsResolverDetails"></small></label>
               <label class="field"><span>解析策略 <em>strategy</em></span><select id="dnsStrategy"><option value="">跟随内核默认</option><option value="prefer_ipv4">优先 IPv4</option><option value="prefer_ipv6">优先 IPv6</option><option value="ipv4_only">仅 IPv4</option><option value="ipv6_only">仅 IPv6</option></select></label>
               <label class="field"><span>查询超时 <em>1.14</em></span><input id="dnsTimeout" placeholder="默认 10s" autocomplete="off" /></label>
               <label class="field"><span>缓存容量</span><input id="dnsCacheCapacity" type="number" min="1024" placeholder="小于 1024 会被忽略" /></label>
@@ -148,6 +148,7 @@
             </div>
             <div class="form-grid four route-fields">
               <label class="field"><span>默认出站 <em>final</em></span><select id="routeFinal"></select></label>
+              <label class="field"><span>默认 HTTP Client</span><input id="routeDefaultHttpClient" placeholder="共享客户端标签或 JSON 对象" autocomplete="off" /></label>
               <label class="field"><span>自动检测接口</span><select id="routeAutoDetect"><option value="auto">自动 · TUN 时启用</option><option value="on">始终启用</option><option value="off">关闭</option></select></label>
               <label class="field"><span>固定默认接口</span><input id="routeDefaultInterface" placeholder="例如 en0，与自动检测互斥" autocomplete="off" /></label>
               <label class="field"><span>默认路由标记 <em>Linux</em></span><input id="routeDefaultMark" type="number" min="0" placeholder="不设置" /></label>
@@ -194,6 +195,8 @@
               <label class="setting-row"><div><strong>写入系统时间</strong><small>write_to_system · 需要系统权限</small></div><input type="checkbox" id="ntpWriteToSystem" /><span class="switch"></span></label>
             </div>
 
+            <details class="advanced-fields"><summary><span><strong>共享 HTTP Client</strong><small>规则集等模块可按 tag 引用，导入的完整配置会保留</small></span><svg><use href="#i-chevron"/></svg></summary><div class="advanced-body"><label class="field"><span>http_clients（JSON 数组）</span><textarea id="httpClientsJson" rows="5" spellcheck="false" placeholder='[{"tag":"rules-client","domain_resolver":"local-dns"}]'></textarea></label></div></details>
+
             <div class="group-heading"><div><strong>缓存与 API</strong><span>cache_file · clash_api · v2ray_api</span></div></div>
             <div class="form-grid four service-fields">
               <label class="field"><span>缓存文件路径</span><input id="cachePath" placeholder="默认 cache.db" autocomplete="off" /></label>
@@ -230,6 +233,7 @@
               <ul class="conflict-list" id="conflictList"></ul>
             </div>
             <div class="panel-title preview-title"><div><svg><use href="#i-code"/></svg><strong>配置预览</strong></div><div class="preview-actions"><span class="code-status"><i></i>JSON 有效</span><button class="icon-action" id="kernelCheckBtn" title="调用本机 sing-box 内核检查"><svg><use href="#i-shield"/></svg></button><button class="icon-action" id="formatBtn" title="格式化"><svg><use href="#i-code"/></svg></button><button class="icon-action" id="copyConfigBtn" title="复制配置"><svg><use href="#i-copy"/></svg></button><button class="icon-action" id="downloadConfigBtn" title="下载配置"><svg><use href="#i-download"/></svg></button></div></div>
+            <p id="editorSourceNote" class="modal-intro hidden">正在使用手动 JSON：生成与下载保持当前内容。修改表单会重新生成；需要保存到表单和备份时，请使用「导入配置」。</p>
             <textarea id="configOutput" spellcheck="false" aria-label="sing-box JSON 配置"></textarea>
             <div class="validation-bar" id="validationBar"><svg><use href="#i-check"/></svg><span>结构检查通过</span><small><b id="conflictCount">0</b> 项冲突 · <b id="deprecatedCount">0</b> 个弃用字段 · <b id="summaryInbounds">0</b> 入站 · <b id="summaryNodes">0</b> 节点 · <b id="summaryEndpoints">0</b> 端点 · <b id="summaryRules">0</b> 规则</small></div>
           </section>
@@ -543,7 +547,7 @@
           <label class="field"><span>替换为</span><input id="tidyReplace" placeholder="香港" autocomplete="off" /></label>
         </div>
         <div class="settings-list modal-switches">
-          <label class="setting-row"><div><strong>删除重复节点</strong><small>协议、服务器、端口与凭据都相同时视为重复</small></div><input type="checkbox" id="tidyDedupe" checked /><span class="switch"></span></label>
+          <label class="setting-row"><div><strong>删除重复节点</strong><small>实际连接配置相同才视为重复，包含传输层、TLS、REALITY 和拨号设置</small></div><input type="checkbox" id="tidyDedupe" checked /><span class="switch"></span></label>
         </div>
         <div class="import-report" id="tidyPreview"></div>
         <div class="modal-error" id="tidyError"></div>
@@ -629,6 +633,6 @@
     </dialog>
 
     <div class="toast" id="toast" role="status"><svg><use href="#i-check"/></svg><span>已复制</span></div>
-    <script type="module" src="/app.js?v=20"></script>
+    <script type="module" src="/app.js?v=21"></script>
   </body>
 </html>

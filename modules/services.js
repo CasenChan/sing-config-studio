@@ -247,6 +247,7 @@ export function validateService(source, { services = [], outboundTags = [] } = {
 }
 
 export const BASE_DEFAULTS_STATE = Object.freeze({
+  httpClientsJson: "",
   ntpEnabled: false,
   ntpServer: "time.apple.com",
   ntpServerPort: "123",
@@ -285,6 +286,10 @@ export function normalizeServiceState(state = {}) {
     ...state,
     services: (state.services || []).map(normalizeService)
   };
+}
+
+export function buildHttpClients(source) {
+  return parseJsonArray(normalizeServiceState(source).httpClientsJson, "共享 HTTP Client");
 }
 
 export function buildNtp(source) {
@@ -350,6 +355,16 @@ export function buildExperimental(source, { clashApiEnabled = true } = {}) {
 
 export function validateServiceState(source, context = {}) {
   const state = normalizeServiceState(source);
+  let clients;
+  try { clients = buildHttpClients(state); }
+  catch (error) { return error.message; }
+  const tags = new Set();
+  for (const client of clients) {
+    if (!client || Array.isArray(client) || typeof client !== "object" || typeof client.tag !== "string" || !client.tag.trim()) return "共享 HTTP Client 必须是含 tag 的对象";
+    if (tags.has(client.tag)) return "共享 HTTP Client 标签重复：" + client.tag;
+    tags.add(client.tag);
+    if (client.detour && context.outboundTags && !context.outboundTags.includes(client.detour)) return "HTTP Client detour 出站不存在：" + client.detour;
+  }
   if (state.ntpEnabled) {
     if (!String(state.ntpServer || "").trim()) return "启用 NTP 后需要填写服务器";
     if (state.ntpServerPort && !optionalPort(state.ntpServerPort)) return "NTP 端口无效";
@@ -385,6 +400,8 @@ export const serviceModule = {
   key: "services",
   extendConfig(config, state, context = {}) {
     const services = normalizeServiceState(state.serviceState);
+    const clients = buildHttpClients(services);
+    if (clients.length) config.http_clients = clients;
     const ntp = buildNtp(services);
     if (ntp) config.ntp = ntp;
     const certificate = buildCertificate(services);

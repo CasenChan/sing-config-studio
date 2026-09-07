@@ -11,10 +11,18 @@ function listenKey(inbound) {
   return `${String(inbound.listen ?? "")}|${inbound.listen_port ?? ""}`;
 }
 
+function listenerNetworks(inbound) {
+  if (["direct", "tproxy", "shadowsocks"].includes(inbound.type)) return [].concat(inbound.network || ["tcp", "udp"]);
+  if (["hysteria", "hysteria2", "tuic"].includes(inbound.type) || inbound.transport?.type === "quic") return ["udp"];
+  if (["mixed", "socks", "http", "redirect", "vmess", "vless", "trojan", "naive", "shadowtls", "anytls", "snell"].includes(inbound.type)) return ["tcp"];
+  return ["tcp", "udp"];
+}
+
 function conflictingListen(a, b) {
   if (!a.listen_port || !b.listen_port || a.listen_port !== b.listen_port) return false;
-  const addressA = String(a.listen ?? "");
-  const addressB = String(b.listen ?? "");
+  if (!listenerNetworks(a).some(network => listenerNetworks(b).includes(network))) return false;
+  const addressA = String(a.listen ?? "").replace(/^\[|\]$/g, "");
+  const addressB = String(b.listen ?? "").replace(/^\[|\]$/g, "");
   if (addressA === addressB) return true;
   return WILDCARD.has(addressA) || WILDCARD.has(addressB);
 }
@@ -53,8 +61,10 @@ function checkListen(config, { clashApiAddress = "" } = {}) {
     }
   }
   if (clashApiAddress) {
-    const [apiHost, apiPort] = clashApiAddress.split(":");
-    const clash = { listen: apiHost, listen_port: Number(apiPort) };
+    const colon = clashApiAddress.lastIndexOf(":");
+    const apiHost = clashApiAddress.slice(0, colon);
+    const apiPort = clashApiAddress.slice(colon + 1);
+    const clash = { type: "http", listen: apiHost, listen_port: Number(apiPort) };
     for (const inbound of listeners) {
       if (conflictingListen(inbound, clash)) {
         issues.push(issue("error", "入站", `入站「${inbound.tag}」占用了 Clash API 的 ${clashApiAddress}`));
@@ -124,6 +134,7 @@ function checkDns(config) {
 
 function checkRoute(config, { skippedRules = [] } = {}) {
   const issues = [];
+  if (config.route?.auto_detect_interface && config.route?.default_interface) issues.push(issue("error", "路由", "自动检测接口与固定默认接口只能选择一个"));
   const inboundTags = (config.inbounds || []).map((item) => item.tag).filter(Boolean);
   const routableTags = [...(config.outbounds || []), ...(config.endpoints || [])].map((item) => item.tag).filter(Boolean);
   const dnsTags = (config.dns?.servers || []).map((item) => item.tag).filter(Boolean);
@@ -207,6 +218,62 @@ function checkOutbounds(config) {
   return issues;
 }
 
+function checkHttpClients(config) {
+  const issues = [];
+  const clients = config.http_clients || [];
+  if (!Array.isArray(clients)) return [issue("error", "HTTP Client", "http_clients 必须是对象数组")];
+  const tags = new Set();
+  for (const client of clients) {
+    if (!client || Array.isArray(client) || typeof client !== "object" || typeof client.tag !== "string" || !client.tag.trim()) {
+      issues.push(issue("error", "HTTP Client", "共享 HTTP Client 必须是含 tag 的对象"));
+      continue;
+    }
+    if (tags.has(client.tag)) issues.push(issue("error", "HTTP Client", "共享 HTTP Client 标签重复：" + client.tag));
+    tags.add(client.tag);
+  }
+  const outbounds = [...(config.outbounds || []), ...(config.endpoints || [])];
+  const check = client => {
+    if (typeof client === "string") {
+      if (!tags.has(client)) issues.push(issue("error", "HTTP Client", "引用的 HTTP Client 不存在：" + client));
+    } else if (!client || Array.isArray(client) || typeof client !== "object") {
+      issues.push(issue("error", "HTTP Client", "HTTP Client 必须是标签或对象"));
+    } else if (client.detour) {
+      const outbound = outbounds.find(item => item.tag === client.detour);
+      if (!outbound) issues.push(issue("error", "HTTP Client", "HTTP Client detour 出站不存在：" + client.detour));
+      else if (outbound.type === "direct" && Object.keys(outbound).every(key => ["type", "tag"].includes(key))) {
+        issues.push(issue("error", "HTTP Client", "HTTP Client 直连下载应省略 detour，不能指向空 Direct 出站：" + client.detour));
+      }
+    }
+  };
+  clients.forEach(check);
+  const walk = value => {
+    if (!value || typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value)) {
+      if (["headers", "predefined"].includes(key)) continue;
+      if (["http_client", "default_http_client"].includes(key)) check(child);
+      walk(child);
+    }
+  };
+  walk(config);
+  return issues;
+}
+
+function configDetourCycles(config) {
+  const entries = [...(config.outbounds || []), ...(config.endpoints || [])];
+  const edges = new Map(entries.map(item => [item.tag, [item.detour, ...(["selector", "urltest"].includes(item.type) ? item.outbounds || [] : [])].filter(Boolean)]));
+  const visited = new Set(), visiting = new Set(), cycles = [];
+  const walk = (tag, path) => {
+    if (visiting.has(tag)) { cycles.push([...path.slice(path.indexOf(tag)), tag]); return; }
+    if (visited.has(tag)) return;
+    visiting.add(tag);
+    for (const next of edges.get(tag) || []) walk(next, [...path, tag]);
+    visiting.delete(tag);
+    visited.add(tag);
+  };
+  for (const tag of edges.keys()) walk(tag, []);
+  return cycles;
+}
+
 function checkDetourCycles(cycles = []) {
   return cycles.map((cycle) => issue("error", "出站", `detour 或出站组存在环路：${cycle.join(" → ")}`));
 }
@@ -221,7 +288,8 @@ export function detectConflicts(config, context = {}) {
     ...checkDns(config),
     ...checkRoute(config, { skippedRules }),
     ...checkOutbounds(config),
-    ...checkDetourCycles(detourCycles)
+    ...checkHttpClients(config),
+    ...checkDetourCycles([...detourCycles, ...configDetourCycles(config)])
   ];
   const seen = new Set();
   return issues.filter((item) => {

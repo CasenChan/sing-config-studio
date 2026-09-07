@@ -120,8 +120,11 @@ function decodeSubscription(value, encoding = "") {
     throw new Error("订阅内容不是 sing-box 配置对象");
   }
   // 只反射长得像 sing-box 配置的数据，避免端点被当成通用 JSON 托管
-  if (!Array.isArray(config.outbounds) || !Array.isArray(config.inbounds)) {
-    throw new Error("订阅内容缺少 inbounds / outbounds，不是 sing-box 配置");
+  const hasRoutableList = Array.isArray(config.outbounds) || Array.isArray(config.endpoints) && config.endpoints.length > 0;
+  if (!Array.isArray(config.inbounds) || !hasRoutableList
+    || config.outbounds !== undefined && !Array.isArray(config.outbounds)
+    || config.endpoints !== undefined && !Array.isArray(config.endpoints)) {
+    throw new Error("订阅内容缺少 inbounds / outbounds 或 endpoints，不是 sing-box 配置");
   }
   return JSON.stringify(config, null, 2) + "\n";
 }

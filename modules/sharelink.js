@@ -1,5 +1,5 @@
 // 把出站节点导出成常见的分享链接格式；不支持导出的类型会明确返回原因。
-import { normalizeOutbound } from "./outbound.js";
+import { buildOutbound, normalizeOutbound } from "./outbound.js";
 
 const SUPPORTED = new Set(["vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic", "anytls"]);
 
@@ -125,21 +125,35 @@ export function exportShareLinks(nodes = []) {
   return { links, skipped };
 }
 
+// 使用实际生成的连接配置比较，名称、ID、来源等管理字段不参与；对象键顺序不影响等价性。
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]));
+  return value;
+}
+
+export function outboundConnectionKey(node) {
+  const { tag, ...connection } = buildOutbound(node);
+  return JSON.stringify(canonical({ connection, enabled: node.enabled !== false }));
+}
+
 // 订阅节点整理：去重、按关键字过滤、批量重命名
 export function dedupeNodes(nodes = []) {
   const seen = new Map();
   const kept = [];
   let removed = 0;
+  const tagReplacements = [];
   for (const node of nodes) {
-    const key = [node.type, node.server, node.port, node.uuid || "", node.password || "", node.method || ""].join("|");
+    const key = outboundConnectionKey(node);
     if (seen.has(key)) {
       removed += 1;
+      tagReplacements.push([node.tag, seen.get(key).tag]);
       continue;
     }
-    seen.set(key, true);
+    seen.set(key, node);
     kept.push(node);
   }
-  return { nodes: kept, removed };
+  return { nodes: kept, removed, tagReplacements };
 }
 
 export function filterNodes(nodes = [], { include = "", exclude = "" } = {}) {

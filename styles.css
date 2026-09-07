@@ -76,6 +76,8 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width:
 .profile-panel > .form-grid { padding: 0 30px 28px; }
 .field { display: flex; min-width: 0; flex-direction: column; gap: 8px; }
 .field > span { color: #777; font-size: 12px; font-weight: 500; }
+#dnsResolverDetails { color: #777; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+#dnsResolverDetails:empty { display: none; }
 .field > span em, .setting-row strong em, .endpoint-main .new-badge, .modal-section .new-badge { display: inline-flex; margin-left: 5px; padding: 1px 6px; border-radius: 8px; background: #ececec; color: #737373; font-size: 9px; font-style: normal; font-weight: 650; letter-spacing: .02em; vertical-align: 1px; }
 .field input, .field select, .field textarea, .copy-field { width: 100%; border: 1px solid #d6d6d6; border-radius: 13px; background: #f3f3f3; transition: border-color .15s, background .15s; }
 .field input, .field select { height: 51px; padding: 0 15px; }
@@ -330,6 +332,7 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width:
 .advanced-fields[open] summary { border-bottom: 1px solid var(--line-soft); }
 .advanced-fields[open] summary svg { transform: rotate(-90deg); }
 .advanced-body { padding: 20px 0; background: #fff; }
+.service-panel > .advanced-fields .advanced-body { padding: 18px; }
 .advanced-body .modal-fields { padding-bottom: 20px; }
 .advanced-switches { margin-bottom: 18px; }
 .field-footnote { margin: 0 36px; padding: 11px 13px; border-radius: 12px; background: #f3f3f3; color: #777; font-size: 11px; line-height: 1.55; }

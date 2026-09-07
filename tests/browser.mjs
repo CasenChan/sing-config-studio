@@ -9,6 +9,7 @@ import { testReviewFlows } from "./review-browser.mjs";
 import { testHttpSubscription } from "./http-browser.mjs";
 import { testChinaRouting } from "./china-browser.mjs";
 import { testShortSubscription } from "./short-browser.mjs";
+import { testBasicLogicFlows } from "./logic-browser.mjs";
 
 const require = createRequire(import.meta.url);
 const CHROME_CANDIDATES = [
@@ -195,6 +196,7 @@ try {
   await testHttpSubscription(browser, base);
   await testShortSubscription(browser, base);
   await testChinaRouting(browser, base);
+  await testBasicLogicFlows(browser, base);
   console.log("browser flow tests passed");
 } finally {
   await browser.close();

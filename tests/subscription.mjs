@@ -30,6 +30,15 @@ try {
   assert.equal((await fetch(await signed({ ...fields, enc: "gzip" }))).status, 400);
   assert.equal((await fetch(await signed({ ...fields, data: Buffer.from('{"hello":1}').toString("base64url") }))).status, 400);
 
+  // 仅端点配置可被订阅传递，但不能因此放宽数组形状检查。
+  const endpointOnly = { ...config, endpoints: [{ type: "tailscale", tag: "tail" }] };
+  delete endpointOnly.outbounds;
+  const endpointUrl = await signed({ ...fields, data: Buffer.from(JSON.stringify(endpointOnly)).toString("base64url") });
+  assert.deepEqual(await (await fetch(endpointUrl)).json(), endpointOnly);
+  for (const invalid of [{ ...endpointOnly, outbounds: {} }, { ...config, endpoints: {} }, { inbounds: [], endpoints: [] }]) {
+    assert.equal((await fetch(await signed({ ...fields, data: Buffer.from(JSON.stringify(invalid)).toString("base64url") }))).status, 400);
+  }
+
   // 改、删、重复任一签名字段，以及退回无签名格式，都不能绕过有效期。
   for (const name of ["data", "enc", "name", "interval", "expires", "sig", "sigv"]) {
     for (const operation of ["change", "delete", "duplicate"]) {

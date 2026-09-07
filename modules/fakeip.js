@@ -1,5 +1,5 @@
 // FakeIP 预设只生成候选状态；界面确认后才保存。关联记录不会进入内核配置。
-import { buildDnsRule, buildDnsServer, dnsModule, normalizeDnsRule, normalizeDnsServer, normalizeDnsState, defaultDomainResolverTag, validateDnsState } from "./dns.js";
+import { buildDnsRule, buildDnsServer, dnsModule, normalizeDnsRule, normalizeDnsServer, normalizeDnsState, buildDefaultDomainResolver, domainResolverServer, validateDnsState } from "./dns.js";
 import { buildInbound, inboundModule, normalizeInbound, validateInbounds } from "./inbound.js";
 import { buildRouteRule, normalizeRouteRule, normalizeRouteState, routeModule, validateRouteState } from "./route.js";
 import { normalizeServiceState, serviceModule, validateServiceState } from "./services.js";
@@ -283,7 +283,7 @@ function checkCandidate(state, result) {
       outboundTags,
       tunEnabled: state.inbounds.some((item) => enabled(item) && item.type === "tun"),
       fallbackFinal: (config.outbounds.find((item) => item.type === "selector") || config.outbounds[0])?.tag || "direct",
-      defaultDomainResolver: defaultDomainResolverTag(state.dns)
+      defaultDomainResolver: buildDefaultDomainResolver(state.dns)
     };
     for (const module of [inboundModule, dnsModule, routeModule, tailscaleModule, endpointFamilyModule, serviceModule]) config = module.extendConfig(config, state, context);
     const ruleSetTags = (config.route.rule_set || []).flatMap((item) => [].concat(item.tag || []));
@@ -346,12 +346,12 @@ function createPreset(source, sourceServer, { tunId = "" } = {}) {
   }
   const real = state.dns.servers.find((item) => enabled(item) && item.type !== "fakeip" && item.tag === state.dns.final) || local;
   useObject(state, owner, "dns.servers", real);
-  const resolver = state.dns.servers.find((item) => enabled(item) && item.type !== "fakeip" && item.tag === state.dns.defaultDomainResolver) || local;
+  const resolver = state.dns.servers.find((item) => enabled(item) && item.type !== "fakeip" && item.tag === domainResolverServer(state.dns.defaultDomainResolver)) || local;
   useObject(state, owner, "dns.servers", resolver);
   setField(state, owner, "dns", undefined, "final", real.tag, "默认真实 DNS", result);
-  setField(state, owner, "dns", undefined, "defaultDomainResolver", resolver.tag, "节点域名解析器", result);
+  setField(state, owner, "dns", undefined, "defaultDomainResolver", domainResolverServer(state.dns.defaultDomainResolver) === resolver.tag ? state.dns.defaultDomainResolver : resolver.tag, "节点域名解析器", result);
   for (const field of ["final", "defaultDomainResolver"]) {
-    if (!state.dns.servers.some((item) => enabled(item) && item.type !== "fakeip" && item.tag === state.dns[field])) {
+    if (!state.dns.servers.some((item) => enabled(item) && item.type !== "fakeip" && item.tag === domainResolverServer(state.dns[field]))) {
       notice(result, "errors", `${field === "final" ? "默认 DNS" : "节点域名解析器"}的手动设置未指向有效真实 DNS，请先修正`);
     }
   }
@@ -407,7 +407,7 @@ function references(value, tag, kind, dnsRule = false) {
       if (key === "fakeipPresets") return false;
       const referenceKey = keys.has(key) || kind === "dns" && key === "server" && (serverReference || item.action === "resolve");
       if (referenceKey && (typeof child === "string" ? splitList(child).includes(tag) : Array.isArray(child) && child.includes(tag))) return true;
-      if (key.endsWith("Json") && child) {
+      if ((key.endsWith("Json") || key === "defaultHttpClient" && String(child).trim().startsWith("{")) && child) {
         try { return walk(JSON.parse(child), serverReference); } catch { return true; } // 无法确认的高级参数保守保留
       }
       return walk(child, serverReference || /^(default_?domain_?resolver|domain_?resolver)$/i.test(key));
@@ -427,7 +427,7 @@ function referrers(state, resource) {
     ...COLLECTIONS.flatMap((path) => (listAt(state, path) || []).map((entry) => ({ path, entry }))),
     ...["nodes", "groups", "endpoints"].flatMap((path) => (state[path] || []).map((entry) => ({ path, entry }))),
     { path: "dns", entry: { defaultDomainResolver: state.dns.defaultDomainResolver } },
-    { path: "route", entry: { advancedJson: state.route.advancedJson, ruleSets: state.route.ruleSets } },
+    { path: "route", entry: { advancedJson: state.route.advancedJson, defaultHttpClient: state.route.defaultHttpClient, ruleSets: state.route.ruleSets } },
     { path: "serviceState", entry: state.serviceState }
   ];
   for (const { path, entry } of objects) {

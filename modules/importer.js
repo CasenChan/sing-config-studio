@@ -498,6 +498,10 @@ export function importConfig(config) {
   const notices = [];
   const seen = new Set();
   collectDeprecated(config, "$", notices, seen);
+  const supported = new Set(["$schema", "log", "dns", "inbounds", "outbounds", "endpoints", "route", "ntp", "certificate", "experimental", "services", "http_clients"]);
+  for (const key of Object.keys(config)) {
+    if (!supported.has(key)) notices.push({ level: "warning", message: "顶层字段 " + key + " 暂不支持，导入时会忽略；需要保留时请直接使用 JSON 编辑器" });
+  }
 
   const inbounds = (config.inbounds || []).map(importInbound).filter(Boolean);
   const skippedInbounds = (config.inbounds || []).length - inbounds.length;
@@ -512,9 +516,7 @@ export function importConfig(config) {
   const dnsState = normalizeDnsState({
     final: config.dns?.final || "",
     strategy: config.dns?.strategy || "",
-    defaultDomainResolver: typeof config.route?.default_domain_resolver === "object"
-      ? config.route.default_domain_resolver.server || ""
-      : config.route?.default_domain_resolver || "",
+    defaultDomainResolver: config.route?.default_domain_resolver ? JSON.parse(JSON.stringify(config.route.default_domain_resolver)) : "",
     disableCache: Boolean(config.dns?.disable_cache),
     disableExpire: Boolean(config.dns?.disable_expire),
     cacheCapacity: config.dns?.cache_capacity ? String(config.dns.cache_capacity) : "",
@@ -529,6 +531,7 @@ export function importConfig(config) {
 
   const routeState = normalizeRouteState({
     final: config.route?.final || "",
+    defaultHttpClient: typeof config.route?.default_http_client === "object" ? JSON.stringify(config.route.default_http_client) : config.route?.default_http_client || "",
     autoDetectInterface: config.route?.auto_detect_interface ? "on" : (config.route ? "off" : "auto"),
     overrideAndroidVpn: Boolean(config.route?.override_android_vpn),
     defaultInterface: config.route?.default_interface || "",
@@ -545,6 +548,7 @@ export function importConfig(config) {
   });
 
   const serviceState = normalizeServiceState({
+    httpClientsJson: config.http_clients ? JSON.stringify(stripDeprecated(config.http_clients), null, 2) : "",
     ntpEnabled: Boolean(config.ntp?.enabled),
     ntpServer: config.ntp?.server || "time.apple.com",
     ntpServerPort: config.ntp?.server_port ? String(config.ntp.server_port) : "123",

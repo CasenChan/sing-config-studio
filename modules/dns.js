@@ -14,6 +14,8 @@ import {
   validateDialFields
 } from "./shared.js";
 
+const STRATEGIES = ["prefer_ipv4", "prefer_ipv6", "ipv4_only", "ipv6_only"];
+
 export const DNS_SERVER_TYPE_META = Object.freeze({
   local: { label: "Local", note: "系统解析器 · 支持邻居域与 mDNS", prefix: "local-dns", dial: true },
   hosts: { label: "Hosts", note: "hosts 文件与预定义记录", prefix: "hosts" },
@@ -652,13 +654,32 @@ export function buildDnsSection(source, { outboundTags = null } = {}) {
   });
 }
 
-export function defaultDomainResolverTag(source) {
+export function parseDomainResolver(value) {
+  if (value && typeof value === "object") {
+    if (Array.isArray(value)) throw new Error("默认域名解析器必须是服务器标签或 JSON 对象");
+    return { ...value };
+  }
+  const text = String(value || "").trim();
+  return text.startsWith("{") ? parseJsonObject(text, "默认域名解析器") : text;
+}
+
+export function domainResolverServer(value) {
+  const resolver = parseDomainResolver(value);
+  return typeof resolver === "object" ? String(resolver.server || "").trim() : resolver;
+}
+
+export function buildDefaultDomainResolver(source) {
   const dns = normalizeDnsState(source);
   const servers = activeDnsServers(dns);
-  const preferred = String(dns.defaultDomainResolver || "").trim();
-  if (servers.some((server) => String(server.tag || "").trim() === preferred)) return preferred;
-  const local = servers.find((server) => server.type === "local") || servers.find((server) => !["fakeip"].includes(server.type));
+  const preferred = parseDomainResolver(dns.defaultDomainResolver);
+  const tag = domainResolverServer(preferred);
+  if (servers.some(server => String(server.tag || "").trim() === tag)) return preferred;
+  const local = servers.find(server => server.type === "local") || servers.find(server => server.type !== "fakeip");
   return local ? String(local.tag || "").trim() : "";
+}
+
+export function defaultDomainResolverTag(source) {
+  return domainResolverServer(buildDefaultDomainResolver(source));
 }
 
 export function validateDnsState(source, context = {}) {
@@ -701,8 +722,21 @@ export function validateDnsState(source, context = {}) {
   if (dns.cacheCapacity !== "" && optionalPositiveInteger(dns.cacheCapacity) === undefined) return "缓存容量必须是正整数";
   const final = String(dns.final || "").trim();
   if (final && !serverTags.includes(final)) return `默认 DNS Server 不存在：${final}`;
-  const resolver = String(dns.defaultDomainResolver || "").trim();
-  if (resolver && !serverTags.includes(resolver)) return `默认域名解析器不存在：${resolver}`;
+  let resolver;
+  try { resolver = parseDomainResolver(dns.defaultDomainResolver); }
+  catch (error) { return error.message; }
+  const resolverTag = domainResolverServer(resolver);
+  if (resolver && (!resolverTag || typeof resolver === "object" && typeof resolver.server !== "string")) return "默认域名解析器对象需要 server 字符串";
+  if (resolverTag && !serverTags.includes(resolverTag)) return "默认域名解析器不存在：" + resolverTag;
+  if (typeof resolver === "object") {
+    if (resolver.strategy && !STRATEGIES.includes(resolver.strategy)) return "默认域名解析器的解析策略无效";
+    for (const key of ["disable_cache", "disable_optimistic_cache"]) {
+      if (key in resolver && typeof resolver[key] !== "boolean") return "默认域名解析器的 " + key + " 必须是布尔值";
+    }
+    if (resolver.rewrite_ttl !== undefined && (!Number.isInteger(resolver.rewrite_ttl) || resolver.rewrite_ttl < 0)) return "默认域名解析器的 TTL 必须是非负整数";
+    const durationError = validateDuration(resolver.timeout, "默认域名解析器超时");
+    if (durationError) return durationError;
+  }
   return "";
 }
 

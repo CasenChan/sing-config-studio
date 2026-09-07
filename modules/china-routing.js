@@ -1,5 +1,5 @@
 import { buildRouteRule, normalizeRouteRule, normalizeRouteState, normalizeRuleSet } from "./route.js";
-import { buildDnsRule, buildDnsServer, normalizeDnsRule, normalizeDnsServer, normalizeDnsState } from "./dns.js";
+import { buildDnsRule, buildDnsServer, normalizeDnsRule, normalizeDnsServer, normalizeDnsState, domainResolverServer } from "./dns.js";
 import { normalizeServiceState } from "./services.js";
 import { outboundModule } from "./outbound.js";
 
@@ -47,9 +47,7 @@ export function planChinaRouting(source) {
       result.changes.push(`添加直连 Local DNS：${local.tag}`);
     }
     const realTags = state.dns.servers.filter(item => enabled(item) && item.type !== "fakeip").map(item => item.tag);
-    const resolver = state.dns.defaultDomainResolver;
-    let resolverTag = resolver;
-    if (typeof resolver === "string" && resolver.trim().startsWith("{")) resolverTag = JSON.parse(resolver).server;
+    const resolverTag = domainResolverServer(state.dns.defaultDomainResolver);
     if (!realTags.includes(resolverTag)) {
       state.dns.defaultDomainResolver = local.tag;
       result.changes.push(`节点解析器使用 ${local.tag}，避免缺失解析器或指向 FakeIP`);
@@ -63,7 +61,7 @@ export function planChinaRouting(source) {
       let set = state.route.ruleSets.find(item => item.tag === preset.tag || item.url === preset.url);
       if (set && !enabled(set)) throw new Error(`规则集 ${set.tag} 已停用，请先启用或调整该规则集后再补齐`);
       if (!set) {
-        set = normalizeRuleSet({ id: unique(state.route.ruleSets, "id", `ruleset-${preset.tag}`), type: "remote", ...preset, format: "binary", updateInterval: "1d", httpClientMode: "inline", httpClientJson: JSON.stringify({ detour: proxy?.tag || "direct", domain_resolver: local.tag }) });
+        set = normalizeRuleSet({ id: unique(state.route.ruleSets, "id", `ruleset-${preset.tag}`), type: "remote", ...preset, format: "binary", updateInterval: "1d", httpClientMode: "inline", httpClientJson: JSON.stringify({ ...(proxy ? { detour: proxy.tag } : Object.keys(direct).some(key => !["type", "tag"].includes(key)) ? { detour: direct.tag } : {}), domain_resolver: local.tag }) });
         state.route.ruleSets.push(set);
         result.changes.push(`添加大陆${preset.tag === "geosite-cn" ? "域名" : "IP"}规则集 ${set.tag}（每日更新）`);
       }

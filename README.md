@@ -24,9 +24,11 @@ npm start
 - V2Ray 传输层、Multiplex、TCP Brutal、UDP over TCP 与全部非弃用 Dial Fields
 - Selector / URLTest 出站组，成员可自动包含全部节点或手动指定，支持默认成员与测试参数
 - 路由默认出站选择「自动」时，优先使用第一个启用且有成员的 Selector（默认档案为 `proxy`），以便客户端手动切换节点；没有可用 Selector 时依次回退到 URLTest、节点和 direct。明确指定的默认出站保持优先
-- detour 与出站组环路检测
-- 批量解析分享链接、导出分享链接、节点去重 / 过滤 / 批量重命名
-- 远程节点订阅：支持 sing-box JSON 与明文/Base64 链接列表，显示更新时间、失败原因与增删差异；JSON 节点与完整导入共用反序列化器，保留 TLS、传输、多路复用及拨号字段
+- detour 与出站组环路（同时检查表单与最终 JSON）
+- 共享 HTTP Client 标签重复、缺失引用、无效下载 detour，以及自动检测接口与固定接口同时启用检测
+- 批量解析分享链接、导出分享链接、节点去重 / 过滤 / 批量重命名；去重按完整有效连接配置比较，包括传输层、TLS、REALITY、拨号和高级参数，不误删仅地址／凭据相同的节点
+- 节点与出站组改名、批量改名和去重会同步成员、默认值、分流、detour 与 HTTP Client 引用；改名／整理前保存快照，存储失败不提交半更新状态
+- 远程节点订阅：支持 sing-box JSON 与明文/Base64 链接列表，显示更新时间、失败原因与增删差异；JSON 节点与完整导入共用反序列化器，保留 TLS、传输、多路复用及拨号字段。删除订阅、导入或恢复配置会取消未完成刷新，迟到响应不会恢复已删除的节点
 
 ### 入站
 
@@ -41,6 +43,7 @@ npm start
 
 ### DNS
 
+- 默认域名解析器支持标签或对象形式；导入后完整保留 `strategy`、缓存、TTL 等选项，DNS 面板显示保留的选项。切换解析服务器保留这些选项，选择「自动」则清除显式选项
 - 15 种 DNS Server：Local、Hosts、TCP、UDP、DoT、DoQ、DoH、DoH3、DHCP、mDNS、FakeIP、Tailscale、OpenConnect、OpenVPN、systemd-resolved
 - DNS 规则编辑器：域名、查询、来源、进程、网络环境、规则集与响应匹配条件，支持逻辑规则与取反
 - 1.14 新增能力：`evaluate`、`respond`、`race`、`speculative`、乐观缓存、查询超时、`preferred_by`
@@ -65,6 +68,7 @@ sing-box 1.14 同一配置只支持一个启用的 FakeIP Server，因此多个�
 - 默认模板包含大陆域名（`geosite-cn`）和大陆 IP（`geoip-cn`）直连规则；规则集由 SagerNet 提供，每日更新，使用 1.14 的 `http_client` 下载并缓存。Rule 模式下匹配大陆的流量走 `direct`，其余使用原默认出站（默认 `proxy` Selector），Global / Direct 模式保持原有行为
 - 已保存的配置不会在刷新或导入时被强行改写。升级后在「路由与规则」点击「补齐大陆直连」，预览后保存；应用前保存旧快照，失败不覆盖，重复应用不重复创建。现有具体分流、DNS 例外和节点保持优先，新增规则放在通用兜底前；停用的同名规则集需先手动处理
 - 大陆域名使用直连 Local DNS 真实解析，位于通用 FakeIP 兜底前；国外地址查询仍可使用 FakeIP，MagicDNS 保持优先。补齐后需重新生成订阅并更新客户端，已有长短链接仍指向生成时的原配置
+- TUN 的接口设置为「自动」时优先尊重填写的固定接口；同时启用自动检测与固定接口会被冲突检查拦截。无代理的大陆预设直连下载省略 `detour`，带拨号设置的自定义 Direct 仍可复用
 - 路由全局字段、`route` / `bypass` / `reject` / `hijack-dns` / `route-options` / `sniff` / `resolve` 动作
 - 规则集支持 Inline、本地文件与远程下载，source JSON 与 binary SRS 双格式，含 1.14 的 `http_client`、`initial_path` 与多标签 `{tag}` 占位符
 - Inline 规则集提供逐字段的 Headless 规则编辑器
@@ -72,15 +76,18 @@ sing-box 1.14 同一配置只支持一个启用的 FakeIP Server，因此多个�
 ### 服务与实验性
 
 - NTP、全局证书存储、Cache File、Clash API、V2Ray API
+- 共享 `http_clients` 可在「服务与实验性」的 JSON 数组编辑器管理；规则集可以按标签引用，「路由与规则」可设置 `default_http_client`（标签或内联对象）。导入、备份和生成都会保留完整定义
 - 9 种 Service：sing-box API、DERP、Resolved、SSM API、CCM、OCM、Hysteria Realm、USB/IP Server、USB/IP Client
 
 ### 生成、导入与校验
 
-- 实时 JSON 预览、格式化、复制、下载
+- 实时 JSON 预览、格式化、复制、下载；结构／引用检查、下载及订阅生成使用当前编辑器内容，不会在生成时重建表单覆盖手写 JSON
+- 订阅弹窗固定使用打开时确认的配置快照，长短链接和有效期重签保持一致。手动 JSON 不会自动反写表单／备份；修改表单会重新生成，需要保存手写配置请显式「导入配置」
+- 合法的纯直连或仅端点配置也可以生成订阅，不要求存在普通代理节点
 - 生成可直接返回 JSON 的 `/subscription` 链接与官方 `sing-box://import-remote-profile` 导入链接
 - 同时生成长链接和 `/s/…` 短链接，各自可复制；二维码、预览和客户端导入优先使用短链接，创建失败时保留长链接并提供重试
 - 订阅二维码：移动端 sing-box 客户端「扫码添加」可直接识别；内置 QR 编码器（Byte 模式、版本 1–40、纠错 L/M），不依赖第三方库。链接经 deflate 压缩后通常缩到原来的 1/2–1/4，典型档案可放进二维码；超出 2953 字节容量时给出提示
-- 导入完整 sing-box JSON 配置并反序列化为表单状态，界面未建模的字段保留在「附加参数」中，往返无损
+- 导入 sing-box JSON 并将支持的模块反序列化为表单状态，条目内未建模的参数保留在「附加参数」中；暂不支持的顶层字段会在预览中明确提示，避免静默丢弃
 - 名为 `direct` 且包含自定义拨号设置的出站会保留，生成时不再追加同名默认对象
 - 导入时识别弃用字段并给出迁移说明
 - 备份 / 恢复全部配置状态，破坏性操作前自动留一份快照
@@ -91,7 +98,7 @@ sing-box 1.14 同一配置只支持一个启用的 FakeIP Server，因此多个�
 配置预览上方会列出跨模块冲突，**错误级别的冲突必须修正后才能生成订阅链接与客户端导入链接**：
 
 - 标签重复：入站、出站与端点、DNS Server、规则集
-- 监听冲突：同端口入站、与 Clash API 控制端口冲突
+- 监听冲突：只有地址、端口和实际监听协议重叠才冲突，允许 TCP 与 UDP 使用相同端口；Clash API 按 TCP 检查并支持 IPv6 地址
 - TUN：多个 TUN 入站、`auto_redirect` 缺少 `auto_route`、启用 TUN 却没有自动检测接口或固定默认接口造成的路由环路
 - FakeIP 被用作默认域名解析器
 - detour 与出站组环路
@@ -193,6 +200,7 @@ modules/
   dns.js         DNS Server、规则与全局选项
   fakeip.js      FakeIP 候选预设、关联历史与保守清理
   route.js       路由规则、规则集与全局字段
+  references.js  出站改名与去重的引用迁移
   services.js    NTP、证书、Experimental 与 Service
   conflicts.js   跨模块冲突检查
   importer.js    完整配置反序列化
@@ -210,13 +218,17 @@ npm run test:browser
 npm run test:security # 静态隔离、异常请求、DNS 锁定、订阅签名与重启
 npm run test:fakeip # 预设、清理、共享资源与配置边界测试
 npm run test:china-routing # 大陆分流补齐、保留手动规则及 FakeIP 兼容
+npm run test:logic # 基础逻辑修复的模块回归（浏览器回归已包含在 check 中）
 SING_BOX_BIN=/path/to/sing-box npm run test:fakeip:kernel
 SING_BOX_BIN=/path/to/sing-box npm run test:china:kernel # 先运行浏览器测试生成默认配置
+SING_BOX_BIN=/path/to/sing-box npm run test:logic:kernel # 本机 HTTP Client、无代理下载、TCP/UDP 真实启动
 ```
 
 浏览器流程测试需要 `playwright-core` 与本机 Chrome/Chromium（可用 `CHROME_PATH` 指定），缺少时会自动跳过。
 
 回归测试覆盖导入前快照、两个存储步骤失败时保留配置、空列表刷新、定制 `direct`、远程节点高级字段的添加与刷新，以及签名生成、有效期切换、异步响应顺序和错误提示。服务端测试覆盖参数篡改／删除／重复、精确过期边界、私有 token、密钥重启复用、非法 Host、静态路径穿越与符号链接、混合 DNS 地址、重绑定、重定向、解压大小限制和超时。
+
+基础逻辑回归还覆盖手写 JSON 下载／长短链接一致、重签快照、纯直连与仅端点订阅、完整连接参数去重、对象解析器与共享 HTTP Client 往返、节点／组改名和去重的引用迁移、保存失败回滚，以及删除／导入后的迟到刷新。额外内核测试只使用本机 HTTP 规则集和回环监听，验证 HTTP Client 的实际请求头、无代理大陆预设下载与同端口 TCP/UDP 同时启动；结果写入 `output/logic-kernel/`，不建立真实代理连接或 TUN。
 
 短链接测试覆盖长短配置一致、重启持久化、私有 token、过期、参数覆盖拦截、重复与并发创建、容量和过期清理、磁盘写入失败，以及浏览器同时生成、失败回退、重试、二维码切换、HTTP 复制、移动端布局和迟到响应。
 

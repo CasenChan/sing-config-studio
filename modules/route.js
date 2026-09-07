@@ -610,6 +610,7 @@ export function validateRuleSet(source, { ruleSets = [], outboundTags = [] } = {
 }
 
 export const ROUTE_STATE_DEFAULTS = Object.freeze({
+  defaultHttpClient: "",
   final: "",
   autoDetectInterface: "auto",
   overrideAndroidVpn: false,
@@ -667,7 +668,8 @@ export function buildRouteSection(source, context = {}) {
   const rules = activeRouteRules(route).filter((rule) => !skipped.has(rule.id)).map(buildRouteRule);
   const ruleSets = activeRuleSets(route).map(buildRuleSet);
   const final = String(route.final || "").trim();
-  const autoDetect = route.autoDetectInterface === "auto" ? tunEnabled : route.autoDetectInterface === "on";
+  const httpClient = String(route.defaultHttpClient || "").trim();
+  const autoDetect = route.autoDetectInterface === "auto" ? tunEnabled && !String(route.defaultInterface || "").trim() : route.autoDetectInterface === "on";
   const extra = parseJsonObject(route.advancedJson, "附加路由参数");
   return mergeDeep(extra, compact({
     rules,
@@ -681,6 +683,7 @@ export function buildRouteSection(source, context = {}) {
     default_interface: String(route.defaultInterface || "").trim(),
     default_mark: route.defaultMark === "" ? undefined : Number(route.defaultMark),
     default_domain_resolver: defaultDomainResolver || undefined,
+    default_http_client: httpClient.startsWith("{") ? parseJsonObject(httpClient, "默认 HTTP Client") : httpClient || undefined,
     default_network_strategy: route.defaultNetworkStrategy || undefined,
     default_network_type: splitList(route.defaultNetworkType),
     default_fallback_network_type: splitList(route.defaultFallbackNetworkType),
