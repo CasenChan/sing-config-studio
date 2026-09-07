@@ -62,6 +62,9 @@ sing-box 1.14 同一配置只支持一个启用的 FakeIP Server，因此多个�
 
 ### 路由与规则集
 
+- 默认模板包含大陆域名（`geosite-cn`）和大陆 IP（`geoip-cn`）直连规则；规则集由 SagerNet 提供，每日更新，使用 1.14 的 `http_client` 下载并缓存。Rule 模式下匹配大陆的流量走 `direct`，其余使用原默认出站（默认 `proxy` Selector），Global / Direct 模式保持原有行为
+- 已保存的配置不会在刷新或导入时被强行改写。升级后在「路由与规则」点击「补齐大陆直连」，预览后保存；应用前保存旧快照，失败不覆盖，重复应用不重复创建。现有具体分流、DNS 例外和节点保持优先，新增规则放在通用兜底前；停用的同名规则集需先手动处理
+- 大陆域名使用直连 Local DNS 真实解析，位于通用 FakeIP 兜底前；国外地址查询仍可使用 FakeIP，MagicDNS 保持优先。补齐后需重新生成订阅并更新客户端，已有长短链接仍指向生成时的原配置
 - 路由全局字段、`route` / `bypass` / `reject` / `hijack-dns` / `route-options` / `sniff` / `resolve` 动作
 - 规则集支持 Inline、本地文件与远程下载，source JSON 与 binary SRS 双格式，含 1.14 的 `http_client`、`initial_path` 与多标签 `{tag}` 占位符
 - Inline 规则集提供逐字段的 Headless 规则编辑器
@@ -206,7 +209,9 @@ npm run check      # 语法检查 + 模块单元测试 + 浏览器流程测试
 npm run test:browser
 npm run test:security # 静态隔离、异常请求、DNS 锁定、订阅签名与重启
 npm run test:fakeip # 预设、清理、共享资源与配置边界测试
+npm run test:china-routing # 大陆分流补齐、保留手动规则及 FakeIP 兼容
 SING_BOX_BIN=/path/to/sing-box npm run test:fakeip:kernel
+SING_BOX_BIN=/path/to/sing-box npm run test:china:kernel # 先运行浏览器测试生成默认配置
 ```
 
 浏览器流程测试需要 `playwright-core` 与本机 Chrome/Chromium（可用 `CHROME_PATH` 指定），缺少时会自动跳过。
@@ -214,6 +219,8 @@ SING_BOX_BIN=/path/to/sing-box npm run test:fakeip:kernel
 回归测试覆盖导入前快照、两个存储步骤失败时保留配置、空列表刷新、定制 `direct`、远程节点高级字段的添加与刷新，以及签名生成、有效期切换、异步响应顺序和错误提示。服务端测试覆盖参数篡改／删除／重复、精确过期边界、私有 token、密钥重启复用、非法 Host、静态路径穿越与符号链接、混合 DNS 地址、重绑定、重定向、解压大小限制和超时。
 
 短链接测试覆盖长短配置一致、重启持久化、私有 token、过期、参数覆盖拦截、重复与并发创建、容量和过期清理、磁盘写入失败，以及浏览器同时生成、失败回退、重试、二维码切换、HTTP 复制、移动端布局和迟到响应。
+
+大陆分流内核测试下载官方 SRS，检查默认配置，并运行真实 sing-box 1.14 验证百度／QQ 域名、大陆和国外 IP、Rule／Global／Direct 切换，以及国内真实 DNS 与国外 FakeIP 的域名映射。测试出口接本机 HTTP 接收器，不创建 TUN、不连接目标网站；结果保存在 `output/china-kernel/verification.txt`。实际部署首次下载规则集需要可用节点和网络，下载出口可在规则集的 HTTP Client 中调整。
 
 FakeIP 浏览器测试覆盖弹窗入口、普通保存、保存并应用、取消／关闭／Esc、重复应用、改名／复制、两种删除、清理预览、存储失败、刷新、空列表、多 TUN 和备份恢复。截图保存在 `output/playwright/`。内核测试要求 sing-box 1.14，检查双栈、IPv4、IPv6、已有真实 DNS、MagicDNS，以及浏览器测试输出的默认示例；配置和结果写入 `output/fakeip-kernel/`。该测试只执行 `check`，不创建 TUN；真实 DNS 回答、域名分流及重启后的映射持久化需在有 TUN 权限的目标环境另行验证。
 

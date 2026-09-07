@@ -141,6 +141,7 @@
             <div class="panel-title">
               <div><svg><use href="#i-sliders"/></svg><strong>路由与规则</strong><span class="version-note">1.14.0</span></div>
               <div class="page-actions">
+                <button class="soft-button" id="configureChinaRoutingBtn" type="button">补齐大陆直连</button>
                 <button class="soft-button" id="addRouteRuleBtn" type="button"><svg><use href="#i-plus"/></svg>添加规则</button>
                 <button class="soft-button" id="addRuleSetBtn" type="button"><svg><use href="#i-plus"/></svg>添加规则集</button>
               </div>
@@ -412,6 +413,16 @@
       </form>
     </dialog>
 
+    <dialog class="modal endpoint-modal" id="chinaRoutingModal">
+      <form method="dialog" id="chinaRoutingForm">
+        <div class="modal-head"><h3>补齐大陆直连</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <p class="modal-intro">Rule 模式需要实际的分流规则。补齐大陆域名、IP 直连和国内 DNS 解析，保留现有节点、模式和具体规则的优先级。</p>
+        <div id="chinaRoutingPreview"></div>
+        <div class="modal-error" id="chinaRoutingError"></div>
+        <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" id="applyChinaRoutingBtn">保存并应用</button></div>
+      </form>
+    </dialog>
+
     <dialog class="modal endpoint-modal" id="fakeipRemovalModal">
       <div class="modal-head"><div><h3>删除 FakeIP</h3><small>是否同时清理一键配置产生的设置？</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
       <p class="modal-intro">自动清理会保留手动修改、原有项目和其他配置仍在使用的部分。仅删除 FakeIP 会保留配套设置，可能留下需要修正的引用。</p>
@@ -618,6 +629,6 @@
     </dialog>
 
     <div class="toast" id="toast" role="status"><svg><use href="#i-check"/></svg><span>已复制</span></div>
-    <script type="module" src="/app.js?v=19"></script>
+    <script type="module" src="/app.js?v=20"></script>
   </body>
 </html>

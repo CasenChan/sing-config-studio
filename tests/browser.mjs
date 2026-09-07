@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { testFakeipFlows } from "./fakeip-browser.mjs";
 import { testReviewFlows } from "./review-browser.mjs";
 import { testHttpSubscription } from "./http-browser.mjs";
+import { testChinaRouting } from "./china-browser.mjs";
 import { testShortSubscription } from "./short-browser.mjs";
 
 const require = createRequire(import.meta.url);
@@ -193,6 +194,7 @@ try {
   await testReviewFlows(browser, base);
   await testHttpSubscription(browser, base);
   await testShortSubscription(browser, base);
+  await testChinaRouting(browser, base);
   console.log("browser flow tests passed");
 } finally {
   await browser.close();

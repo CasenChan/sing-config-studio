@@ -20,6 +20,7 @@ import { encodeQr, qrToSvg } from "./modules/qrcode.js";
 import { hasFakeipPreset, planFakeipPreset, planFakeipRemoval, planFakeipServerSave } from "./modules/fakeip.js";
 import { subscriptionPayload } from "./modules/subscription-payload.js";
 import { sha256 } from "./modules/sha256.js";
+import { planChinaRouting } from "./modules/china-routing.js";
 import {
   SERVICE_TYPE_META,
   normalizeService,
@@ -84,7 +85,7 @@ const configModules = new ConfigModuleRegistry()
   .register(serviceModule);
 
 const STORAGE_KEY = "sing-config-studio:v1";
-const defaultState = {
+const defaultState = planChinaRouting({
   settings: {
     profileName: "My Sing Profile",
     logLevel: "info"
@@ -236,7 +237,7 @@ const defaultState = {
       fingerprint: "chrome"
     }
   ]
-};
+}).state;
 
 let state = loadState();
 let toastTimer;
@@ -2180,17 +2181,34 @@ function nextDnsTag(type) {
 let pendingFakeipPreset = false;
 let pendingFakeipRemovalId = "";
 
-function renderFakeipPlan(container, result) {
+function renderPresetPlan(container, result) {
   const groups = [["errors", "error", "待修正"], ["changes", "", "变更"], ["preserved", "warning", "保留"], ["warnings", "warning", "提醒"]];
   container.innerHTML = `${result.summary ? `<p class="fakeip-summary">${escapeHtml(result.summary)}</p>` : ""}<ul class="conflict-list">${groups.flatMap(([key, level, label]) => (result[key] || []).map((message) => `<li class="conflict-item${level ? ` is-${level}` : ""}"><span class="conflict-scope">${label}</span><span>${escapeHtml(message)}</span></li>`)).join("")}</ul>`;
   container.classList.remove("hidden");
 }
 
+$("#configureChinaRoutingBtn").addEventListener("click", () => {
+  const result = planChinaRouting(state);
+  renderPresetPlan($("#chinaRoutingPreview"), result);
+  $("#chinaRoutingError").textContent = "";
+  $("#applyChinaRoutingBtn").disabled = Boolean(result.errors.length);
+  $("#chinaRoutingModal").showModal();
+});
+$("#chinaRoutingForm").addEventListener("submit", event => {
+  event.preventDefault();
+  const result = planChinaRouting(state);
+  if (result.errors.length) return $("#chinaRoutingError").textContent = result.errors.join("；");
+  try { commitState(result.state, "补齐大陆直连前"); }
+  catch (error) { return $("#chinaRoutingError").textContent = error.message; }
+  $("#chinaRoutingModal").close();
+  showToast("大陆直连规则已补齐，请重新生成订阅并在客户端更新配置");
+});
+
 function updateFakeipPreview() {
   if (!pendingFakeipPreset) return;
   const result = planFakeipPreset(state, readDnsServerForm(), { tunId: $("#fakeipTunSelect").value });
   $("#dnsServerFormError").textContent = "";
-  renderFakeipPlan($("#fakeipPresetPreview"), result);
+  renderPresetPlan($("#fakeipPresetPreview"), result);
   $("#saveDnsServerBtn").textContent = "保存并应用";
   $("#fakeipPresetStatus").textContent = result.errors.length ? "请先修正预览中的问题" : "待保存应用";
 }
@@ -2523,8 +2541,8 @@ setupSortableList("#dnsServerList", () => state.dns.servers, {
     if (server.type === "fakeip" && hasFakeipPreset(state, server.id)) {
       pendingFakeipRemovalId = server.id;
       $("#fakeipRemovalError").textContent = "";
-      renderFakeipPlan($("#fakeipRemovalPreview"), planFakeipRemoval(state, server.id));
-      renderFakeipPlan($("#fakeipOnlyRemovalPreview"), planFakeipRemoval(state, server.id, { cleanup: false }));
+      renderPresetPlan($("#fakeipRemovalPreview"), planFakeipRemoval(state, server.id));
+      renderPresetPlan($("#fakeipOnlyRemovalPreview"), planFakeipRemoval(state, server.id, { cleanup: false }));
       $("#fakeipRemovalModal").showModal();
       return;
     }
@@ -2602,7 +2620,7 @@ $("#dnsServerForm").addEventListener("submit", (event) => {
       ? planFakeipPreset(state, server, { tunId: $("#fakeipTunSelect").value })
       : planFakeipServerSave(state, server);
     if (result.errors.length) {
-      renderFakeipPlan($("#fakeipPresetPreview"), result);
+      renderPresetPlan($("#fakeipPresetPreview"), result);
       return $("#dnsServerFormError").textContent = result.errors[0];
     }
     try { commitState(result.state, pendingFakeipPreset ? "应用 FakeIP 预设前" : "保存 FakeIP 前"); }
