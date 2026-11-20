@@ -25,11 +25,58 @@ function fallback(rule, dns, fakeTags) {
   return Object.keys(rule).every(key => keys.includes(key));
 }
 
+// 经代理下载时不能带 domain_resolver：否则内核先用本地 DNS 解析下载域名，再把 IP 交给代理，
+// raw.githubusercontent.com 在大陆常被污染。没有代理时用非空的 http_client 直连（空对象会走默认出站）。
+function presetHttpClient(proxy, direct, local) {
+  if (proxy) return { detour: proxy.tag };
+  if (Object.keys(direct).some(key => !["type", "tag"].includes(key))) return { detour: direct.tag, domain_resolver: local.tag };
+  return { domain_resolver: local.tag };
+}
+
+const PRESET_RULE_SET_ID = /^ruleset-(geosite|geoip)-cn(-\d+)?$/;
+const PRESET_ROUTE_RULE_ID = /^route-cn-(domain|ip)(-\d+)?$/;
+const PRESET_DNS_RULE_ID = /^dns-cn-domain(-\d+)?$/;
+const PRESET_URLS = new Set(CHINA_RULE_SETS.map(item => item.url));
+
+// 旧版预设写入的 {detour: 代理, domain_resolver: 本地} 原样修复为只经代理下载；用户改过的值不动
+export function repairLegacyChinaRuleSets(source) {
+  let repaired = 0;
+  const ruleSets = (source.route?.ruleSets || []).map(set => {
+    if (!PRESET_URLS.has(set.url) || set.httpClientMode !== "inline") return set;
+    let client;
+    try { client = JSON.parse(set.httpClientJson || ""); } catch { return set; }
+    const keys = Object.keys(client || {}).sort().join(",");
+    if (keys !== "detour,domain_resolver" || client.detour === "direct") return set;
+    repaired += 1;
+    return { ...set, httpClientJson: JSON.stringify({ detour: client.detour }) };
+  });
+  return repaired ? { ...source, route: { ...source.route, ruleSets } } : source;
+}
+
+// 去掉旧版预设展开到列表里的规则集、路由规则和 DNS 规则（只认预设生成的 id 与地址）
+export function stripChinaPreset(source) {
+  const route = source.route || {};
+  const dns = source.dns || {};
+  return {
+    ...source,
+    route: {
+      ...route,
+      ruleSets: (route.ruleSets || []).filter(set => !(PRESET_RULE_SET_ID.test(set.id || "") && PRESET_URLS.has(set.url))),
+      rules: (route.rules || []).filter(rule => !PRESET_ROUTE_RULE_ID.test(rule.id || ""))
+    },
+    dns: { ...dns, rules: (dns.rules || []).filter(rule => !PRESET_DNS_RULE_ID.test(rule.id || "")) }
+  };
+}
+
+// 生成配置时每次都会调用：只复制会被修改的 route / dns / serviceState，节点等大数组按引用共享
 export function planChinaRouting(source) {
-  const state = JSON.parse(JSON.stringify(source));
-  state.route = normalizeRouteState(state.route);
-  state.dns = normalizeDnsState(state.dns);
-  state.serviceState = normalizeServiceState(state.serviceState);
+  const copy = value => JSON.parse(JSON.stringify(value ?? {}));
+  const state = {
+    ...source,
+    route: normalizeRouteState(copy(source.route)),
+    dns: normalizeDnsState(copy(source.dns)),
+    serviceState: normalizeServiceState(copy(source.serviceState))
+  };
   const result = { state, changes: [], warnings: [], errors: [], preserved: [], summary: "大陆域名和 IP 直连；已有具体规则继续优先，未命中流量使用原来的默认出站。" };
   try {
     const outbounds = outboundModule.extendConfig({}, state).outbounds;
@@ -61,7 +108,7 @@ export function planChinaRouting(source) {
       let set = state.route.ruleSets.find(item => item.tag === preset.tag || item.url === preset.url);
       if (set && !enabled(set)) throw new Error(`规则集 ${set.tag} 已停用，请先启用或调整该规则集后再补齐`);
       if (!set) {
-        set = normalizeRuleSet({ id: unique(state.route.ruleSets, "id", `ruleset-${preset.tag}`), type: "remote", ...preset, format: "binary", updateInterval: "1d", httpClientMode: "inline", httpClientJson: JSON.stringify({ ...(proxy ? { detour: proxy.tag } : Object.keys(direct).some(key => !["type", "tag"].includes(key)) ? { detour: direct.tag } : {}), domain_resolver: local.tag }) });
+        set = normalizeRuleSet({ id: unique(state.route.ruleSets, "id", `ruleset-${preset.tag}`), type: "remote", ...preset, format: "binary", updateInterval: "1d", httpClientMode: "inline", httpClientJson: JSON.stringify(presetHttpClient(proxy, direct, local)) });
         state.route.ruleSets.push(set);
         result.changes.push(`添加大陆${preset.tag === "geosite-cn" ? "域名" : "IP"}规则集 ${set.tag}（每日更新）`);
       }

@@ -9,6 +9,9 @@ import { importConfig } from "../modules/importer.js";
 import { planChinaRouting } from "../modules/china-routing.js";
 import { detectConflicts, hasBlockingConflicts } from "../modules/conflicts.js";
 import { configFromState } from "./fakeip-fixtures.mjs";
+import { normalizeGroup, normalizeOutbound } from "../modules/outbound.js";
+import { hostRuleSetsOnServer } from "../modules/rule-set-hosting.js";
+import { startTestServer } from "./server-helper.mjs";
 
 const bin = process.env.SING_BOX_BIN;
 assert.ok(bin, "请设置 SING_BOX_BIN 为 sing-box 1.14 可执行文件");
@@ -77,6 +80,38 @@ try {
   for (const set of china.route.rule_set) { set.format = "source"; set.url = url; }
   china.experimental.cache_file.path = join(directory, "china-cache.db");
   await verify("mainland-without-proxy", china);
+
+  // 订阅服务器托管规则集：第一个节点不可用（如机场的「剩余流量」占位节点）时，客户端首次启动仍要成功
+  const sourceRules = join(directory, "cn-source.json");
+  await writeFile(sourceRules, JSON.stringify({ version: 3, rules: [{ domain_suffix: [".cn"] }] }));
+  const compiled = join(directory, "cn.srs");
+  assert.equal(spawnSync(bin, ["rule-set", "compile", sourceRules, "-o", compiled]).status, 0);
+  const srs = await (await import("node:fs/promises")).readFile(compiled);
+  const upstream = httpServer((request, response) => response.end(srs));
+  await new Promise(resolve => upstream.listen(0, "127.0.0.1", resolve));
+  const hosting = await startTestServer({ RULE_SET_SYNC: "on", RULE_SET_UPSTREAM: `http://127.0.0.1:${upstream.address().port}/` });
+  try {
+    let status;
+    for (let attempt = 0; attempt < 50 && !(status?.ruleSets?.["geosite-cn"] && status?.ruleSets?.["geoip-cn"]); attempt += 1) {
+      status = await (await fetch(hosting.base + "/api/status")).json();
+      if (!status.ruleSets?.["geoip-cn"]) await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    const airport = importConfig(minimal).state;
+    airport.nodes = [normalizeOutbound({ id: "placeholder", type: "socks", tag: "剩余流量：10G", server: "127.0.0.1", port: 1 })];
+    airport.groups = [normalizeGroup({ id: "auto", type: "urltest", tag: "auto", includeAllNodes: true }), normalizeGroup({ id: "proxy", type: "selector", tag: "proxy", includeAllNodes: true, members: "auto", defaultMember: "auto" })];
+    const viaProxy = configFromState(planChinaRouting(airport).state);
+    assert.ok(viaProxy.route.rule_set.every(set => set.http_client.detour === "proxy"), "预览经代理下载");
+    // 用主机名访问订阅服务器，下载必须真正经过 default_domain_resolver 解析
+    const hostname = hosting.base.replace("127.0.0.1", "localhost") + "/";
+    const { config: hosted, hosted: tags } = hostRuleSetsOnServer(viaProxy, hostname, status);
+    assert.deepEqual(tags, ["geosite-cn", "geoip-cn"]);
+    assert.ok(hosted.route.rule_set.every(set => set.url.startsWith("http://localhost:") && set.http_client.domain_resolver.server === "local"));
+    hosted.experimental = { ...hosted.experimental, cache_file: { enabled: true, path: join(directory, "hosted-cache.db") } };
+    await verify("hosted-rule-sets-dead-first-node", hosted);
+  } finally {
+    await hosting.close();
+    await new Promise(resolve => upstream.close(resolve));
+  }
 
   const probe = netServer();
   await new Promise(resolve => probe.listen(0, "127.0.0.1", resolve));

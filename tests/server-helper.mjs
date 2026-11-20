@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 export async function startTestServer(env = {}) {
   const temporary = env.STATE_DIRECTORY ? null : await mkdtemp(join(tmpdir(), "sing-test-server-"));
   const child = spawn(process.execPath, ["server.mjs"], {
-    env: { ...process.env, PORT: "0", HOST: "127.0.0.1", SUBSCRIPTION_TOKEN: "", SUBSCRIPTION_SIGNING_KEY: "server-test-signing-key-do-not-use-in-production", RATE_LIMIT_MAX: "1000", STATE_DIRECTORY: temporary, ...env },
+    env: { ...process.env, PORT: "0", HOST: "127.0.0.1", SUBSCRIPTION_TOKEN: "", SUBSCRIPTION_SIGNING_KEY: "server-test-signing-key-do-not-use-in-production", RATE_LIMIT_MAX: "1000", RULE_SET_SYNC: "off", STATE_DIRECTORY: temporary, ...env },
     stdio: ["ignore", "pipe", "pipe"]
   });
   const base = await new Promise((resolve, reject) => {

@@ -20,7 +20,8 @@ import { encodeQr, qrToSvg } from "./modules/qrcode.js";
 import { hasFakeipPreset, planFakeipPreset, planFakeipRemoval, planFakeipServerSave } from "./modules/fakeip.js";
 import { subscriptionPayload } from "./modules/subscription-payload.js";
 import { sha256 } from "./modules/sha256.js";
-import { planChinaRouting } from "./modules/china-routing.js";
+import { CHINA_RULE_SETS, planChinaRouting, repairLegacyChinaRuleSets, stripChinaPreset } from "./modules/china-routing.js";
+import { hostRuleSetsOnServer } from "./modules/rule-set-hosting.js";
 import { rewriteOutboundReferences } from "./modules/references.js";
 import {
   SERVICE_TYPE_META,
@@ -89,7 +90,10 @@ const configModules = new ConfigModuleRegistry()
   .register(serviceModule);
 
 const STORAGE_KEY = "sing-config-studio:v1";
-const defaultState = planChinaRouting({
+const UI_MODE_KEY = "sing-config-studio:ui-mode";
+// 「大陆直连」是开关：规则只在生成配置时展开（见 effectiveState），不写进可编辑的规则列表
+const defaultState = {
+  presets: { china: { enabled: true } },
   settings: {
     profileName: "My Sing Profile",
     logLevel: "info"
@@ -240,7 +244,7 @@ const defaultState = planChinaRouting({
       fingerprint: "chrome"
     }
   ]
-}).state;
+};
 
 let state = loadState();
 let generatedConfigText = "";
@@ -324,8 +328,104 @@ function normalizeSavedState(parsed) {
     inbounds: migrateInbounds(parsed),
     dns: migrateDnsState(parsed),
     route: migrateRouteState(parsed),
-    nodes: parsed.nodes.map(normalizeOutbound)
+    nodes: parsed.nodes.map(normalizeOutbound),
+    // 旧版本没有 presets：保持 undefined，由 adoptChinaPreset 按生成结果是否一致决定开关
+    ...(parsed.presets ? { presets: { china: { enabled: parsed.presets.china?.enabled === true } } } : {})
   };
+}
+
+// 示例节点不是真实服务器：留在最前面会让客户端首次启动时下载规则集失败
+const DEMO_NODE_HOSTS = new Set(["hk-edge.example.com", "jp-aurora.example.com", "us-transit.example.com"]);
+const DEMO_PASSWORD = "REPLACE_WITH_PASSWORD";
+
+function isDemoNode(node) {
+  return DEMO_NODE_HOSTS.has(String(node?.server || "").trim().toLowerCase()) || node?.password === DEMO_PASSWORD;
+}
+
+// 用户加入第一个真实节点时一并移除示例节点；返回移除数量
+function dropDemoNodes(incoming) {
+  if (!incoming.some((node) => !isDemoNode(node))) return 0;
+  const before = state.nodes.length;
+  state.nodes = state.nodes.filter((node) => !isDemoNode(node));
+  return before - state.nodes.length;
+}
+
+function demoNote(removed) {
+  return removed ? `，已移除 ${removed} 个示例节点` : "";
+}
+
+function isAdvancedMode() {
+  return document.documentElement.dataset.mode !== "simple";
+}
+
+function applyUiMode(mode) {
+  const next = mode === "simple" ? "simple" : "advanced";
+  document.documentElement.dataset.mode = next;
+  for (const button of $$(".mode-switch [data-ui-mode]")) {
+    button.classList.toggle("active", button.dataset.uiMode === next);
+    button.setAttribute("aria-pressed", String(button.dataset.uiMode === next));
+  }
+  try { localStorage.setItem(UI_MODE_KEY, next); } catch {}
+}
+
+// 只看简洁模式会隐藏的部分：用户改过其中任何一项，就默认进入高级模式，避免设置「消失」
+function hasAdvancedCustomization(source) {
+  const base = normalizeSavedState(clone(defaultState));
+  // 旧版默认 TUN 显式写了 stack: "mixed"，与官方构建的内核默认相同，不算自定义
+  const inbounds = (list) => list.map(({ stack, ...rest }) => (stack === "mixed" || !stack ? rest : { ...rest, stack }));
+  const pick = (item) => JSON.stringify([item.endpoints, inbounds(item.inbounds), item.dns, item.route, item.serviceState, item.groups, item.settings.logLevel]);
+  return pick(source) !== pick(base);
+}
+
+function initialUiMode(hadSavedState) {
+  let stored = null;
+  try { stored = localStorage.getItem(UI_MODE_KEY); } catch {}
+  if (stored === "simple" || stored === "advanced") return stored;
+  return hadSavedState && hasAdvancedCustomization(state) ? "advanced" : "simple";
+}
+
+function chinaPresetEnabled(source = state) {
+  return source.presets?.china?.enabled === true;
+}
+
+function chinaPlan(source = state) {
+  if (source === state && renderChinaPlan !== undefined) return renderChinaPlan;
+  return chinaPresetEnabled(source) ? planChinaRouting(source) : null;
+}
+
+// 开关打开时，在生成用的副本上展开大陆直连规则；界面与校验仍使用用户自己的列表
+function effectiveState(source = state) {
+  const plan = chinaPlan(source);
+  return plan && !plan.errors.length ? plan.state : source;
+}
+
+function chinaPresetErrors(source = state) {
+  return chinaPlan(source)?.errors || [];
+}
+
+function generateConfigFor(source) {
+  const previous = state;
+  state = source;
+  try { return generateConfig(); } finally { state = previous; }
+}
+
+// 旧档案把预设展开在列表里：只有完整、未改动（生成结果完全一致）时才收回为开关；
+// 否则保留原规则、开关关闭，仅修复旧预设原样写入的 domain_resolver
+function adoptChinaPreset(source) {
+  if (source.presets) return source;
+  const repaired = repairLegacyChinaRuleSets(source);
+  const off = { ...repaired, presets: { china: { enabled: false } } };
+  const stripped = stripChinaPreset(repaired);
+  const changed = stripped.route.rules.length !== repaired.route.rules.length
+    || stripped.route.ruleSets.length !== repaired.route.ruleSets.length
+    || stripped.dns.rules.length !== repaired.dns.rules.length;
+  if (!changed) return off;
+  const on = { ...stripped, presets: { china: { enabled: true } } };
+  try {
+    return JSON.stringify(generateConfigFor(on)) === JSON.stringify(generateConfigFor(off)) ? on : off;
+  } catch {
+    return off;
+  }
 }
 
 function loadState() {
@@ -366,13 +466,14 @@ function generateConfig() {
     outbounds: [],
     route: { rules: [] }
   };
-  const config = configModules.build(baseConfig, state, {
+  const source = effectiveState(state);
+  const config = configModules.build(baseConfig, source, {
     hasProxy,
     outboundTags: availableOutboundTags(),
     inboundTags: activeInboundTags(state.inbounds || []),
     tunEnabled: hasTunInbound(state.inbounds || []),
     fallbackFinal: defaultFinalOutbound(),
-    defaultDomainResolver: buildDefaultDomainResolver(state.dns)
+    defaultDomainResolver: buildDefaultDomainResolver(source.dns)
   });
   return cleanObject(config);
 }
@@ -452,6 +553,8 @@ function syncInputsFromState() {
   const s = state.settings;
   $("#profileName").value = s.profileName;
   $("#logLevel").value = s.logLevel;
+  $("#chinaPresetEnabled").checked = chinaPresetEnabled();
+  syncChinaPresetNote();
   syncDnsInputs();
   syncRouteInputs();
   syncServiceInputs();
@@ -462,6 +565,7 @@ function readSettings() {
     profileName: $("#profileName").value.trim() || "Sing Profile",
     logLevel: $("#logLevel").value
   };
+  state.presets = { ...state.presets, china: { enabled: $("#chinaPresetEnabled").checked } };
 }
 
 function protocolShort(type) {
@@ -610,10 +714,12 @@ function renderConfig(options) {
   readRouteSettings();
   readServiceSettings();
   renderNodeTags = computeNodeTagList();
+  renderChinaPlan = chinaPresetEnabled() ? planChinaRouting(state) : null;
   try {
     renderConfigFromState(options);
   } finally {
     renderNodeTags = null;
+    renderChinaPlan = undefined;
   }
 }
 
@@ -640,6 +746,7 @@ function renderConfigFromState({ persist = true } = {}) {
   $("#deprecatedCount").textContent = detectDeprecated(config).length;
   updateDnsSummary();
   updateRouteSummary();
+  syncChinaPresetNote();
   syncRouteOutboundOptions();
   syncServiceInputs();
   if (persist) saveState();
@@ -1429,7 +1536,11 @@ async function buildSubscriptionUrl() {
   const days = Number($("#subscriptionExpiry")?.value || 0);
   const base = subscriptionBase();
   const endpoint = new URL("subscription", base);
-  const encoded = await encodeSubscriptionData(JSON.stringify(snapshot.config));
+  // 服务器已同步大陆规则集时，订阅里的规则集改为从该服务器直连下载，首次启动不依赖节点
+  const status = await probeSubscriptionServer(base);
+  const { config, hosted } = hostRuleSetsOnServer(snapshot.config, base, status);
+  subscriptionHosting = { hosted, wanted: chinaRuleSetTags(snapshot.config), reachable: status !== null };
+  const encoded = await encodeSubscriptionData(JSON.stringify(config));
   endpoint.searchParams.set("data", encoded.data);
   endpoint.searchParams.set("enc", encoded.enc);
   endpoint.searchParams.set("name", safeFilename(snapshot.profileName));
@@ -1449,6 +1560,26 @@ async function buildSubscriptionUrl() {
 }
 
 const subscriptionServerStatus = new Map();
+let subscriptionHosting = null;
+
+function chinaRuleSetTags(config) {
+  return CHINA_RULE_SETS.filter((preset) => (config?.route?.rule_set || []).some((set) => set?.url === preset.url)).map((preset) => preset.tag);
+}
+
+function renderRuleSetHostingNote() {
+  const note = $("#ruleSetHostingNote");
+  const info = subscriptionHosting;
+  if (!info?.wanted.length) {
+    note.textContent = "";
+    note.className = "rule-set-hosting hidden";
+    return;
+  }
+  const missing = info.wanted.filter((tag) => !info.hosted.includes(tag));
+  note.className = `rule-set-hosting${missing.length ? " is-warning" : ""}`;
+  note.textContent = missing.length
+    ? `订阅服务器${info.reachable ? "尚未同步" : "无法访问，未能使用"}规则集（${missing.join("、")}）：客户端首次启动需要默认节点可用才能下载。`
+    : "大陆规则集由订阅服务器提供，客户端首次启动不依赖任何节点。";
+}
 
 async function probeSubscriptionServer(base) {
   if (subscriptionServerStatus.has(base)) return subscriptionServerStatus.get(base);
@@ -1477,10 +1608,11 @@ async function updateSubscriptionGuard(ticket) {
   importButton.classList.toggle("is-disabled", missingToken);
   importButton.setAttribute("aria-disabled", String(missingToken));
   if (missingToken) {
-    guard.textContent = "该服务器启用了 SUBSCRIPTION_TOKEN，请填写相同的访问 token，否则客户端导入会收到 401。";
+    guard.textContent = "该服务器启用了 SUBSCRIPTION_TOKEN，请在「高级选项」填写相同的访问 token，否则客户端导入会收到 401。";
   } else if (status === null) {
-    guard.textContent = "无法探测该地址上的订阅服务，请确认公开访问地址正确且服务已启动。";
+    guard.textContent = "无法探测该地址上的订阅服务，请在「高级选项」确认公开访问地址正确且服务已启动。";
   }
+  if (missingToken || status === null) $("#subscriptionAdvanced").open = true;
 }
 
 const QR_MAX_BYTES = 2953; // 版本 40、纠错 L 的 Byte 模式上限
@@ -1516,7 +1648,7 @@ function setSubscriptionTarget(url) {
 }
 
 async function updateShortSubscription(url, ticket) {
-  $("#shortSubscriptionStatus").textContent = "正在生成短链接，长链接已可使用…";
+  $("#shortSubscriptionStatus").textContent = "正在生成订阅链接…";
   $("#retryShortSubscriptionBtn").classList.add("hidden");
   try {
     // 用户连续输入地址或 token 时，只为最后一次结果保存配置。
@@ -1545,6 +1677,7 @@ async function updateShortSubscription(url, ticket) {
     if (ticket !== subscriptionRender) return;
     $("#shortSubscriptionStatus").textContent = `短链接生成失败：${error.message}。长链接仍可使用。`;
     $("#retryShortSubscriptionBtn").classList.remove("hidden");
+    $("#subscriptionAdvanced").open = true;
   }
 }
 
@@ -1561,9 +1694,13 @@ async function updateSubscriptionFields() {
   $("#subscriptionQr").innerHTML = "";
   $("#subscriptionQrMeta").textContent = "正在生成签名链接…";
   $("#subscriptionGuard").classList.add("hidden");
+  $("#loopbackNote").classList.toggle("hidden", !/^(127\.|localhost$|\[::1\]$)/.test(new URL(subscriptionBase()).hostname));
+  subscriptionHosting = null;
+  renderRuleSetHostingNote();
   try {
     const url = await buildSubscriptionUrl();
     if (ticket !== subscriptionRender) return;
+    renderRuleSetHostingNote();
     $("#subscriptionUrl").value = url;
     $("#copySubscriptionBtn").disabled = false;
     setSubscriptionTarget(url);
@@ -1576,8 +1713,9 @@ async function updateSubscriptionFields() {
     $("#importClientBtn").removeAttribute("href");
     $("#subscriptionQr").innerHTML = "";
     $("#subscriptionQrMeta").textContent = "生成失败，请修正后重试";
-    $("#subscriptionGuard").textContent = error.message;
+    $("#subscriptionGuard").textContent = `${error.message}。可在「高级选项」中修改公开访问地址与访问 token。`;
     $("#subscriptionGuard").classList.remove("hidden");
+    $("#subscriptionAdvanced").open = true;
     showToast(error.message, true);
   }
 }
@@ -1634,8 +1772,10 @@ $("#remoteSubscriptionForm").addEventListener("submit", async (event) => {
     try {
       const result = await refreshRemoteSubscription(subscription);
       if (result.cancelled) return;
+      const removed = dropDemoNodes(state.nodes.filter((node) => node.subscriptionId === subscription.id));
+      if (removed) refreshOutbounds();
       $("#remoteSubscriptionModal").close();
-      showToast(`已从订阅添加 ${result.count} 个节点${result.rejected ? `，忽略 ${result.rejected} 项` : ""}`, Boolean(result.rejected));
+      showToast(`已从订阅添加 ${result.count} 个节点${result.rejected ? `，忽略 ${result.rejected} 项` : ""}${demoNote(removed)}`, Boolean(result.rejected));
     } catch (error) {
       state.subscriptions = state.subscriptions.filter((item) => item.id !== subscription.id);
       throw error;
@@ -1781,10 +1921,11 @@ $("#importForm").addEventListener("submit", (event) => {
     }
   }
   if (!imported.length) return $("#importError").textContent = errors.join("；");
+  const removed = dropDemoNodes(imported);
   state.nodes.push(...imported.map(normalizeOutbound));
   $("#importModal").close();
   refreshOutbounds();
-  showToast(`已导入 ${imported.length} 个节点${errors.length ? `，${errors.length} 个失败` : ""}`, Boolean(errors.length));
+  showToast(`已导入 ${imported.length} 个节点${errors.length ? `，${errors.length} 个失败` : ""}${demoNote(removed)}`, Boolean(errors.length));
 });
 
 $("#kernelCheckBtn").addEventListener("click", async () => {
@@ -1850,8 +1991,14 @@ $("#generateBtn").addEventListener("click", async () => {
     focusConflicts();
     return showToast(`存在 ${summarizeConflicts(currentConflicts).errors} 项配置冲突，请先修正后再生成链接`, true);
   }
+  const demoTags = (validation.config.outbounds || []).filter(isDemoNode).map((item) => item.tag);
+  if (demoTags.length) {
+    return showToast(`配置里还有示例节点（${demoTags.join("、")}），它们不是真实服务器，客户端会无法启动。请导入你自己的节点（会自动移除示例）或删除示例后再生成`, true);
+  }
   subscriptionSnapshot = { config: clone(validation.config), profileName: state.settings.profileName };
   const snapshot = subscriptionSnapshot;
+  subscriptionServerStatus.clear();
+  $("#subscriptionAdvanced").open = isAdvancedMode();
   $("#publicBaseUrl").value = defaultPublicBase();
   $("#subscriptionModal").showModal();
   await updateSubscriptionFields();
@@ -2245,7 +2392,15 @@ function renderPresetPlan(container, result) {
   container.classList.remove("hidden");
 }
 
-$("#configureChinaRoutingBtn").addEventListener("click", () => {
+function syncChinaPresetNote() {
+  const errors = chinaPresetErrors();
+  const note = $("#chinaPresetNote");
+  note.textContent = errors.length ? `无法应用：${errors.join("；")}` : "国内域名和 IP 直连并用本地 DNS 解析，其余流量走代理";
+  note.classList.toggle("error-text", Boolean(errors.length));
+}
+
+// 把开关展开成可编辑的规则（与生成时用的是同一个 planChinaRouting），之后开关关闭
+$("#materializeChinaBtn").addEventListener("click", () => {
   const result = planChinaRouting(state);
   renderPresetPlan($("#chinaRoutingPreview"), result);
   $("#chinaRoutingError").textContent = "";
@@ -2256,10 +2411,11 @@ $("#chinaRoutingForm").addEventListener("submit", event => {
   event.preventDefault();
   const result = planChinaRouting(state);
   if (result.errors.length) return $("#chinaRoutingError").textContent = result.errors.join("；");
-  try { commitState(result.state, "补齐大陆直连前"); }
+  const next = { ...clone(result.state), presets: { ...state.presets, china: { enabled: false } } };
+  try { commitState(next, "转为自定义规则前"); }
   catch (error) { return $("#chinaRoutingError").textContent = error.message; }
   $("#chinaRoutingModal").close();
-  showToast("大陆直连规则已补齐，请重新生成订阅并在客户端更新配置");
+  showToast("已转为自定义规则，可在「路由与规则」中编辑");
 });
 
 function updateFakeipPreview() {
@@ -2747,6 +2903,8 @@ $("#dnsRuleForm").addEventListener("submit", (event) => {
 // renderConfig 期间节点不变，但十余个校验上下文都会调用 nodeTagList；
 // 每次都重新校验全部节点会让每次按键随节点数线性放大，因此在单次渲染内复用结果。
 let renderNodeTags = null;
+// 同理缓存单次渲染内的大陆直连展开结果；undefined 表示不在渲染中
+let renderChinaPlan;
 
 function computeNodeTagList() {
   return state.nodes.filter(nodeIsComplete).map((node) => String(node.tag || "").trim()).filter(Boolean);
@@ -2788,7 +2946,10 @@ function availableDnsServerTags() {
 }
 
 function availableRuleSetTags() {
-  return (state.route.ruleSets || []).filter((set) => set.enabled !== false).flatMap((set) => splitTagList(set.tag));
+  const own = (state.route.ruleSets || []).filter((set) => set.enabled !== false).flatMap((set) => splitTagList(set.tag));
+  if (!chinaPresetEnabled()) return own;
+  const preset = (effectiveState().route.ruleSets || []).filter((set) => set.enabled !== false).flatMap((set) => splitTagList(set.tag));
+  return [...new Set([...own, ...preset])];
 }
 
 function availableInboundTags() {
@@ -3899,6 +4060,7 @@ let currentConflicts = [];
 
 function collectModuleIssues() {
   const issues = [];
+  for (const error of chinaPresetErrors()) issues.push({ level: "error", scope: "分流", message: `大陆直连无法应用：${error}` });
   // 上下文只算一次：每次构造都会重新校验全部节点，放在循环里会变成 O(n²)
   const nodeContext = nodeValidationContext();
   for (const node of state.nodes) {
@@ -4477,10 +4639,14 @@ $("#nodeForm").addEventListener("submit", (event) => {
     try { commitState(rewriteOutboundReferences(candidate, [[previousTag, node.tag]]), "出站改名前"); }
     catch (error) { return $("#nodeFormError").textContent = error.message; }
   } else if (index >= 0) state.nodes[index] = node;
-  else state.nodes.push(node);
+  let removed = 0;
+  if (index < 0) {
+    removed = dropDemoNodes([node]);
+    state.nodes.push(node);
+  }
   $("#nodeModal").close();
   refreshOutbounds();
-  showToast(index >= 0 ? "出站已更新" : "出站已添加");
+  showToast(index >= 0 ? "出站已更新" : `出站已添加${demoNote(removed)}`);
 });
 
 $("#groupForm").addEventListener("submit", (event) => {
@@ -4861,7 +5027,7 @@ $("#importConfigForm").addEventListener("submit", (event) => {
     if (!pendingImport) return;
   }
   if (!confirm("导入会覆盖当前浏览器里的全部配置，确定继续吗？")) return;
-  try { commitState(normalizeSavedState({ ...pendingImport.state, subscriptions: [] }), "导入配置前"); }
+  try { commitState(normalizeSavedState({ ...pendingImport.state, subscriptions: [], presets: { china: { enabled: false } } }), "导入配置前"); }
   catch (error) { return $("#importConfigError").textContent = error.message; }
   $("#importConfigModal").close();
   const warnings = pendingImport.notices.length;
@@ -5027,7 +5193,7 @@ $("#backupForm").addEventListener("submit", (event) => {
   const restored = parsed?.state || parsed;
   if (!restored?.settings || !Array.isArray(restored.nodes)) return $("#backupError").textContent = "备份内容不是本工具导出的状态";
   if (!confirm("恢复会覆盖当前浏览器里的全部配置，确定继续吗？")) return;
-  try { commitState(normalizeSavedState(restored), "恢复备份前"); }
+  try { commitState(adoptChinaPreset(normalizeSavedState(restored)), "恢复备份前"); }
   catch (error) { return $("#backupError").textContent = error.message; }
   $("#backupModal").close();
   showToast("配置已恢复");
@@ -5056,6 +5222,7 @@ function updateActiveNavigation() {
   const marker = window.scrollY + 150;
   let current = navigableSections[0];
   for (const section of navigableSections) {
+    if (section.offsetParent === null) continue; // 简洁模式隐藏的模块
     if (section.offsetTop <= marker) current = section;
   }
   if (current) setActiveSection(current.id);
@@ -5069,6 +5236,17 @@ document.addEventListener("click", (event) => {
   }
 });
 
+// 旧档案在第一次保存前完成预设迁移，并据此决定默认界面模式
+let hadSavedState = false;
+try { hadSavedState = localStorage.getItem(STORAGE_KEY) !== null; } catch {}
+if (!state.presets) state = adoptChinaPreset(state);
+applyUiMode(initialUiMode(hadSavedState));
+for (const button of $$("[data-ui-mode]")) {
+  button.addEventListener("click", () => {
+    applyUiMode(button.dataset.uiMode);
+    updateActiveNavigation();
+  });
+}
 syncInputsFromState();
 renderNodes();
 renderGroups();

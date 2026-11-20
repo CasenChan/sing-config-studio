@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { pinAdvancedMode, replaceDemoNodes } from "./browser-helpers.mjs";
 import { mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 export async function testBasicLogicFlows(browser, base) {
   const page = await browser.newPage();
+  await pinAdvancedMode(page);
   page.setDefaultTimeout(10000);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await mkdir("output/playwright", { recursive: true });
@@ -41,6 +43,7 @@ export async function testBasicLogicFlows(browser, base) {
   };
   try {
     await page.goto(base, { waitUntil: "networkidle" });
+    await replaceDemoNodes(page);
     const original = await config();
     const manual = structuredClone(original);
     manual.route.final = "direct";

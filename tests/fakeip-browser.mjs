@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { pinAdvancedMode, replaceDemoNodes } from "./browser-helpers.mjs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { emptyState } from "./fakeip-fixtures.mjs";
 import { normalizeInbound } from "../modules/inbound.js";
 
 export async function testFakeipFlows(browser, base) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+  await pinAdvancedMode(page);
   const key = "sing-config-studio:v1";
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -24,6 +26,7 @@ export async function testFakeipFlows(browser, base) {
   };
   try {
     await page.goto(base, { waitUntil: "networkidle" });
+    await replaceDemoNodes(page);
     await page.reload({ waitUntil: "networkidle" });
     const original = await stored();
     await openAdd("https");

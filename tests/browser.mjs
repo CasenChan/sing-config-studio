@@ -1,6 +1,7 @@
 // 浏览器流程测试：添加、编辑、取消、删除、导入、冲突拦截与生成订阅。
 // 需要 playwright-core 与一个本机 Chrome/Chromium；缺任一条件时跳过而不是失败。
 import { startTestServer } from "./server-helper.mjs";
+import { pinAdvancedMode, replaceDemoNodes } from "./browser-helpers.mjs";
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import assert from "node:assert/strict";
@@ -8,6 +9,7 @@ import { testFakeipFlows } from "./fakeip-browser.mjs";
 import { testReviewFlows } from "./review-browser.mjs";
 import { testHttpSubscription } from "./http-browser.mjs";
 import { testChinaRouting } from "./china-browser.mjs";
+import { testSimpleMode } from "./simple-browser.mjs";
 import { testShortSubscription } from "./short-browser.mjs";
 import { testBasicLogicFlows } from "./logic-browser.mjs";
 
@@ -48,6 +50,7 @@ for (let attempt = 0; attempt < 40; attempt += 1) {
 
 const browser = await chromium.launch({ executablePath, headless: true, args: ["--host-resolver-rules=MAP sing-http.test 127.0.0.1", "--no-proxy-server"] });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+await pinAdvancedMode(page);
 const errors = [];
 page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
 page.on("console", (message) => { if (message.type() === "error") errors.push(`console: ${message.text()}`); });
@@ -57,6 +60,7 @@ const conflicts = () => page.locator("#conflictList .conflict-item").allTextCont
 
 try {
   await page.goto(base, { waitUntil: "networkidle" });
+  await replaceDemoNodes(page);
 
   // 默认档案可以直接生成
   assert.equal(await page.locator("#conflictTitle").textContent(), "冲突检查通过");
@@ -147,6 +151,7 @@ try {
 
   // 导入带来的 insecure / alpn 在 Naive 表单里不可见：列表提示错误，打开后直接保存即可清除
   const naivePage = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await pinAdvancedMode(naivePage);
   await naivePage.goto(base, { waitUntil: "networkidle" });
   await naivePage.evaluate(() => {
     const key = "sing-config-studio:v1";
@@ -235,6 +240,7 @@ try {
   await testShortSubscription(browser, base);
   await testChinaRouting(browser, base);
   await testBasicLogicFlows(browser, base);
+  await testSimpleMode(browser, base);
   console.log("browser flow tests passed");
 } finally {
   await browser.close();

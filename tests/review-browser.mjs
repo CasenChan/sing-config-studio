@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { pinAdvancedMode, replaceDemoNodes } from "./browser-helpers.mjs";
 
 export async function testReviewFlows(browser, base) {
   const page = await browser.newPage();
+  await pinAdvancedMode(page);
   const key = "sing-config-studio:v1";
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
@@ -21,6 +23,7 @@ export async function testReviewFlows(browser, base) {
   };
   try {
     await page.goto(base, { waitUntil: "networkidle" });
+    await replaceDemoNodes(page);
     await page.reload({ waitUntil: "networkidle" });
     const original = await stored();
     const originalConfig = await config();
@@ -81,6 +84,7 @@ export async function testReviewFlows(browser, base) {
 
     // 签名 API 只接收摘要；待签名时清空旧链接，较早返回的请求不能覆盖新选项。
     await page.click("#resetBtn");
+    await replaceDemoNodes(page);
     const signingBodies = [];
     let release;
     const held = new Promise(resolve => { release = resolve; });
@@ -117,7 +121,7 @@ export async function testReviewFlows(browser, base) {
     }
     failed = true;
     await page.selectOption("#subscriptionExpiry", "30");
-    await page.waitForFunction(() => document.querySelector("#subscriptionGuard").textContent === "测试签名失败");
+    await page.waitForFunction(() => document.querySelector("#subscriptionGuard").textContent.startsWith("测试签名失败"));
     assert.equal(await page.locator("#subscriptionUrl").inputValue(), "");
     assert.equal(await page.locator("#importClientBtn").getAttribute("href"), null);
     assert.deepEqual(errors, []);

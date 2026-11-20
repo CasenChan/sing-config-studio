@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { pinAdvancedMode, replaceDemoNodes } from "./browser-helpers.mjs";
 import { mkdir } from "node:fs/promises";
 
 export async function testShortSubscription(browser, base) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+  await pinAdvancedMode(page);
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   let fail = true;
@@ -27,6 +29,7 @@ export async function testShortSubscription(browser, base) {
       await route.continue();
     });
     await page.goto(base, { waitUntil: "networkidle" });
+    await replaceDemoNodes(page);
     await page.click("#generateBtn");
     await page.waitForFunction(() => document.querySelector("#shortSubscriptionStatus").textContent.includes("测试存储不可用"));
     const originalLong = await longUrl();

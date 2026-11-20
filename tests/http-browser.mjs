@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { pinAdvancedMode, replaceDemoNodes } from "./browser-helpers.mjs";
 
 export async function testHttpSubscription(browser, base) {
   const page = await browser.newPage();
+  await pinAdvancedMode(page);
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   const address = new URL(base);
@@ -13,6 +15,7 @@ export async function testHttpSubscription(browser, base) {
   });
   try {
     await page.goto(address.toString(), { waitUntil: "networkidle" });
+    await replaceDemoNodes(page);
     assert.deepEqual(await page.evaluate(() => ({ secure: isSecureContext, subtle: Boolean(crypto.subtle) })), { secure: false, subtle: false });
     await page.click("#generateBtn");
     await page.waitForFunction(() => document.querySelector("#subscriptionUrl").value.includes("sig="));

@@ -7,7 +7,8 @@
     <meta name="description" content="sing-box 1.14 配置与订阅链接生成器" />
     <title>sing-box · 配置生成器</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=20" />
+    <script>try { document.documentElement.dataset.mode = localStorage.getItem("sing-config-studio:ui-mode") || "simple"; } catch { document.documentElement.dataset.mode = "simple"; }</script>
+    <link rel="stylesheet" href="/styles.css?v=21" />
   </head>
   <body>
     <svg class="svg-sprite" aria-hidden="true">
@@ -39,15 +40,19 @@
           <small>配置订阅生成器</small>
           <span class="core-version">内核 1.14.x</span>
         </div>
+        <div class="qr-switch mode-switch" role="group" aria-label="界面模式">
+          <button type="button" data-ui-mode="simple" title="只显示节点、分流和生成订阅">简洁</button>
+          <button type="button" data-ui-mode="advanced" title="显示全部模块">高级</button>
+        </div>
         <nav class="main-nav" aria-label="主导航">
           <button class="active" data-scroll="profiles" data-title="基础配置" aria-current="page"><svg><use href="#i-grid"/></svg><span>基础配置</span></button>
           <button data-scroll="nodes" data-title="代理节点"><svg><use href="#i-file"/></svg><span>代理节点</span><i>3</i></button>
-          <button data-scroll="endpoints" data-title="端点"><svg><use href="#i-network"/></svg><span>端点</span><i>0</i></button>
-          <button data-scroll="inbounds" data-title="入站"><svg><use href="#i-import"/></svg><span>入站</span><i>0</i></button>
-          <button data-scroll="dns" data-title="DNS"><svg><use href="#i-shield"/></svg><span>DNS</span><i>0</i></button>
-          <button data-scroll="settings" data-title="路由与规则"><svg><use href="#i-sliders"/></svg><span>路由与规则</span></button>
-          <button data-scroll="services" data-title="服务与实验性"><svg><use href="#i-terminal"/></svg><span>服务</span><i>0</i></button>
-          <button data-scroll="preview" data-title="配置预览"><svg><use href="#i-code"/></svg><span>配置预览</span></button>
+          <button class="advanced-only" data-scroll="endpoints" data-title="端点"><svg><use href="#i-network"/></svg><span>端点</span><i>0</i></button>
+          <button class="advanced-only" data-scroll="inbounds" data-title="入站"><svg><use href="#i-import"/></svg><span>入站</span><i>0</i></button>
+          <button class="advanced-only" data-scroll="dns" data-title="DNS"><svg><use href="#i-shield"/></svg><span>DNS</span><i>0</i></button>
+          <button class="advanced-only" data-scroll="settings" data-title="路由与规则"><svg><use href="#i-sliders"/></svg><span>路由与规则</span></button>
+          <button class="advanced-only" data-scroll="services" data-title="服务与实验性"><svg><use href="#i-terminal"/></svg><span>服务</span><i>0</i></button>
+          <button class="advanced-only" data-scroll="preview" data-title="配置预览"><svg><use href="#i-code"/></svg><span>配置预览</span></button>
         </nav>
       </aside>
 
@@ -63,9 +68,9 @@
             <div class="panel-title">
               <div><svg><use href="#i-file"/></svg><strong>基础配置</strong><span class="version-note">1.14</span></div>
               <div class="page-actions">
-                <button class="soft-button reset-button" id="resetBtn" title="恢复演示配置"><span>↻</span>恢复示例</button>
+                <button class="soft-button reset-button advanced-only" id="resetBtn" title="恢复演示配置"><span>↻</span>恢复示例</button>
                 <button class="soft-button" id="importBtn"><svg><use href="#i-import"/></svg>导入链接</button>
-                <button class="soft-button" id="importConfigBtn" type="button"><svg><use href="#i-file"/></svg>导入配置</button>
+                <button class="soft-button advanced-only" id="importConfigBtn" type="button"><svg><use href="#i-file"/></svg>导入配置</button>
                 <button class="soft-button" id="backupBtn" type="button"><svg><use href="#i-download"/></svg>备份/恢复</button>
                 <button class="soft-button" id="addNodeBtn"><svg><use href="#i-plus"/></svg>添加节点</button>
                 <button class="primary-button" id="generateBtn">生成订阅</button>
@@ -73,28 +78,38 @@
             </div>
             <div class="form-grid four">
               <label class="field"><span>档案名称</span><input id="profileName" value="My Sing Profile" autocomplete="off" /></label>
-              <label class="field"><span>日志级别</span><select id="logLevel"><option value="info">Info</option><option value="warn">Warn</option><option value="error">Error</option><option value="debug">Debug</option></select></label>
+              <label class="field advanced-only"><span>日志级别</span><select id="logLevel"><option value="info">Info</option><option value="warn">Warn</option><option value="error">Error</option><option value="debug">Debug</option></select></label>
             </div>
           </section>
 
           <section class="panel node-panel" id="nodes">
-            <div class="group-heading"><div><strong>代理节点</strong><span>PROXY · Selector</span></div><div class="group-tools"><b id="nodeCount">0</b><button class="subscription-tool" id="addSubscriptionBtn" title="添加订阅"><svg><use href="#i-link"/></svg><span>订阅</span></button><button id="exportLinksBtn" title="导出分享链接"><svg><use href="#i-copy"/></svg></button><button id="tidyNodesBtn" title="整理节点"><svg><use href="#i-sliders"/></svg></button><button id="inlineImportBtn" title="导入节点"><svg><use href="#i-import"/></svg></button><button id="inlineAddBtn" title="添加节点"><svg><use href="#i-plus"/></svg></button></div></div>
+            <div class="group-heading"><div><strong>代理节点</strong><span>PROXY · Selector</span></div><div class="group-tools"><b id="nodeCount">0</b><button class="subscription-tool" id="addSubscriptionBtn" title="添加订阅"><svg><use href="#i-link"/></svg><span>订阅</span></button><button class="advanced-only" id="exportLinksBtn" title="导出分享链接"><svg><use href="#i-copy"/></svg></button><button class="advanced-only" id="tidyNodesBtn" title="整理节点"><svg><use href="#i-sliders"/></svg></button><button id="inlineImportBtn" title="导入节点"><svg><use href="#i-import"/></svg></button><button id="inlineAddBtn" title="添加节点"><svg><use href="#i-plus"/></svg></button></div></div>
             <div class="subscription-sources hidden" id="subscriptionSources"></div>
             <div class="node-list" id="nodeList"></div>
             <div class="node-foot"><span><i></i><span id="nodeReadyText">0 个节点可生成</span></span><button class="text-button" id="clearNodesBtn">清空</button></div>
 
+            <div class="advanced-only">
             <div class="group-heading"><div><strong>出站组</strong><span>Selector · URLTest</span></div><div class="group-tools"><b id="groupCount">0</b><button class="subscription-tool" id="addGroupBtn" type="button" title="添加出站组"><svg><use href="#i-plus"/></svg><span>添加</span></button></div></div>
             <div class="endpoint-list sortable-list" id="groupList"></div>
             <div class="node-foot"><span><i></i><span id="groupSummaryText">0 个出站组</span></span><small>默认出站选“自动”时，优先使用第一个可用的手动选择组</small></div>
+            </div>
           </section>
 
-          <section class="panel endpoint-panel" id="endpoints">
+          <section class="panel routing-mode-panel" id="routingMode">
+            <div class="group-heading"><div><strong>分流</strong><span>大陆直连 · 其余走代理</span></div><div class="group-tools"><button class="subscription-tool advanced-only" id="materializeChinaBtn" type="button" title="把大陆直连展开为可编辑的规则">转为自定义规则</button></div></div>
+            <div class="settings-list">
+              <label class="setting-row"><div><strong>大陆直连</strong><small id="chinaPresetNote">国内域名和 IP 直连并用本地 DNS 解析，其余流量走代理</small></div><input type="checkbox" id="chinaPresetEnabled" /><span class="switch"></span></label>
+            </div>
+            <p class="mode-hint simple-only">默认使用 VPN（TUN）模式接管手机或电脑的流量。入站、DNS、路由规则和服务等高级设置在<button type="button" class="text-button" data-ui-mode="advanced">高级模式</button>中，隐藏时仍然生效。</p>
+          </section>
+
+          <section class="panel endpoint-panel advanced-only" id="endpoints">
             <div class="group-heading"><div><strong>端点</strong><span>Endpoint · 独立网络接口</span></div><div class="group-tools"><b id="endpointCount">0</b><button class="subscription-tool" id="addEndpointBtn" title="添加端点"><svg><use href="#i-plus"/></svg><span>添加端点</span></button></div></div>
             <div class="endpoint-list" id="endpointList"></div>
             <div class="node-foot"><span><i></i><span id="endpointReadyText">0 个端点已启用</span></span><small>生成到顶层 endpoints，不计入代理节点</small></div>
           </section>
 
-          <section class="panel inbound-panel" id="inbounds">
+          <section class="panel inbound-panel advanced-only" id="inbounds">
             <div class="panel-title">
               <div><svg><use href="#i-import"/></svg><strong>入站</strong><span class="version-note">1.14</span></div>
               <div class="page-actions">
@@ -105,7 +120,7 @@
             <div class="node-foot"><span><i></i><span id="inboundSummaryText">0 个入站</span></span><small>入站顺序不影响匹配，路由规则通过标签引用</small></div>
           </section>
 
-          <section class="panel dns-panel" id="dns">
+          <section class="panel dns-panel advanced-only" id="dns">
             <div class="panel-title">
               <div><svg><use href="#i-shield"/></svg><strong>DNS</strong><span class="version-note">1.14</span></div>
               <div class="page-actions">
@@ -137,11 +152,10 @@
             <div class="node-foot"><span><i></i><span id="dnsSummaryText">0 个 Server · 0 条规则</span></span><small>按列表顺序匹配，可拖动排序</small></div>
           </section>
 
-          <section class="panel route-panel" id="settings">
+          <section class="panel route-panel advanced-only" id="settings">
             <div class="panel-title">
               <div><svg><use href="#i-sliders"/></svg><strong>路由与规则</strong><span class="version-note">1.14</span></div>
               <div class="page-actions">
-                <button class="soft-button" id="configureChinaRoutingBtn" type="button">补齐大陆直连</button>
                 <button class="soft-button" id="addRouteRuleBtn" type="button"><svg><use href="#i-plus"/></svg>添加规则</button>
                 <button class="soft-button" id="addRuleSetBtn" type="button"><svg><use href="#i-plus"/></svg>添加规则集</button>
               </div>
@@ -172,7 +186,7 @@
             <div class="node-foot"><span><i></i><span id="routeSummaryText">0 条规则 · 0 个规则集</span></span><small>按列表顺序匹配，可拖动排序</small></div>
           </section>
 
-          <section class="panel service-panel" id="services">
+          <section class="panel service-panel advanced-only" id="services">
             <div class="panel-title">
               <div><svg><use href="#i-terminal"/></svg><strong>服务与实验性</strong><span class="version-note">1.14</span></div>
               <div class="page-actions">
@@ -232,10 +246,10 @@
               <div class="conflict-head"><svg><use href="#i-shield"/></svg><strong id="conflictTitle">冲突检查通过</strong><span id="conflictCounts"></span></div>
               <ul class="conflict-list" id="conflictList"></ul>
             </div>
-            <div class="panel-title preview-title"><div><svg><use href="#i-code"/></svg><strong>配置预览</strong></div><div class="preview-actions"><span class="code-status"><i></i>JSON 有效</span><button class="icon-action" id="kernelCheckBtn" title="调用本机 sing-box 内核检查"><svg><use href="#i-shield"/></svg></button><button class="icon-action" id="formatBtn" title="格式化"><svg><use href="#i-code"/></svg></button><button class="icon-action" id="copyConfigBtn" title="复制配置"><svg><use href="#i-copy"/></svg></button><button class="icon-action" id="downloadConfigBtn" title="下载配置"><svg><use href="#i-download"/></svg></button></div></div>
-            <p id="editorSourceNote" class="modal-intro hidden">正在使用手动 JSON：生成与下载保持当前内容。修改表单会重新生成；需要保存到表单和备份时，请使用「导入配置」。</p>
-            <textarea id="configOutput" spellcheck="false" aria-label="sing-box JSON 配置"></textarea>
-            <div class="validation-bar" id="validationBar"><svg><use href="#i-check"/></svg><span>结构检查通过</span><small><b id="conflictCount">0</b> 项冲突 · <b id="deprecatedCount">0</b> 个弃用字段 · <b id="summaryInbounds">0</b> 入站 · <b id="summaryNodes">0</b> 节点 · <b id="summaryEndpoints">0</b> 端点 · <b id="summaryRules">0</b> 规则</small></div>
+            <div class="panel-title preview-title advanced-only"><div><svg><use href="#i-code"/></svg><strong>配置预览</strong></div><div class="preview-actions"><span class="code-status"><i></i>JSON 有效</span><button class="icon-action" id="kernelCheckBtn" title="调用本机 sing-box 内核检查"><svg><use href="#i-shield"/></svg></button><button class="icon-action" id="formatBtn" title="格式化"><svg><use href="#i-code"/></svg></button><button class="icon-action" id="copyConfigBtn" title="复制配置"><svg><use href="#i-copy"/></svg></button><button class="icon-action" id="downloadConfigBtn" title="下载配置"><svg><use href="#i-download"/></svg></button></div></div>
+            <p id="editorSourceNote" class="modal-intro hidden advanced-only">正在使用手动 JSON：生成与下载保持当前内容。修改表单会重新生成；需要保存到表单和备份时，请使用「导入配置」。</p>
+            <textarea class="advanced-only" id="configOutput" spellcheck="false" aria-label="sing-box JSON 配置"></textarea>
+            <div class="validation-bar advanced-only" id="validationBar"><svg><use href="#i-check"/></svg><span>结构检查通过</span><small><b id="conflictCount">0</b> 项冲突 · <b id="deprecatedCount">0</b> 个弃用字段 · <b id="summaryInbounds">0</b> 入站 · <b id="summaryNodes">0</b> 节点 · <b id="summaryEndpoints">0</b> 端点 · <b id="summaryRules">0</b> 规则</small></div>
           </section>
         </section>
       </main>
@@ -419,8 +433,8 @@
 
     <dialog class="modal endpoint-modal" id="chinaRoutingModal">
       <form method="dialog" id="chinaRoutingForm">
-        <div class="modal-head"><h3>补齐大陆直连</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
-        <p class="modal-intro">Rule 模式需要实际的分流规则。补齐大陆域名、IP 直连和国内 DNS 解析，保留现有节点、模式和具体规则的优先级。</p>
+        <div class="modal-head"><h3>转为自定义规则</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <p class="modal-intro">把「大陆直连」展开为可编辑的路由规则、DNS 规则和规则集，之后由你自己维护，开关会随之关闭。已有的具体规则仍保持优先。</p>
         <div id="chinaRoutingPreview"></div>
         <div class="modal-error" id="chinaRoutingError"></div>
         <div class="modal-actions"><button type="button" class="secondary-button dialog-close">取消</button><button class="primary-button" id="applyChinaRoutingBtn">保存并应用</button></div>
@@ -603,19 +617,14 @@
     <dialog class="modal subscription-modal" id="subscriptionModal">
       <div class="modal-head"><h3>订阅</h3><button class="modal-icon" id="closeSubscription" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
       <div class="subscription-body">
-        <div class="success-icon"><svg><use href="#i-check"/></svg></div><h4>配置已生成</h4><p>将下面的地址作为远程配置导入 sing-box。</p>
-        <label class="field"><span>公开访问地址</span><input id="publicBaseUrl" placeholder="https://your-domain.example" /></label>
-        <div class="form-grid two subscription-security">
-          <label class="field"><span>访问 token</span><input id="subscriptionToken" placeholder="与 SUBSCRIPTION_TOKEN 一致" autocomplete="off" /></label>
-          <label class="field"><span>有效期</span><select id="subscriptionExpiry"><option value="">永久</option><option value="1">1 天</option><option value="7">7 天</option><option value="30">30 天</option></select></label>
-        </div>
-        <label class="field"><span>长链接</span><div class="copy-field"><input id="subscriptionUrl" readonly /><button id="copySubscriptionBtn" class="secondary-button">复制</button></div></label>
-        <label class="field"><span>短链接</span><div class="copy-field"><input id="shortSubscriptionUrl" readonly placeholder="生成长链接后自动创建" /><button id="copyShortSubscriptionBtn" class="secondary-button" disabled>复制</button></div></label>
+        <div class="success-icon"><svg><use href="#i-check"/></svg></div><h4>订阅已生成</h4><p>在 sing-box 客户端扫码，或点击「导入客户端」。</p>
+        <label class="field"><span>订阅链接</span><div class="copy-field"><input id="shortSubscriptionUrl" readonly placeholder="正在生成…" /><button id="copyShortSubscriptionBtn" class="secondary-button" disabled>复制</button></div></label>
         <p id="shortSubscriptionStatus" role="status"></p>
         <button id="retryShortSubscriptionBtn" type="button" class="secondary-button hidden">重试生成短链接</button>
-        <p>短链接将配置保存在当前订阅服务器，沿用长链接的有效期；二维码和客户端导入优先使用短链接。</p>
-        <div class="link-warning hidden" id="linkWarning">链接较长，节点较多时建议接入持久化存储。</div>
+        <div class="link-warning hidden advanced-only" id="linkWarning">链接较长，节点较多时建议接入持久化存储。</div>
         <div class="link-warning link-guard hidden" id="subscriptionGuard"></div>
+        <p class="rule-set-hosting" id="ruleSetHostingNote" role="status"></p>
+        <div class="link-warning hidden" id="loopbackNote">订阅地址指向本机，手机等其他设备无法访问；部署到服务器后请在「高级选项」填写公开访问地址。</div>
         <div class="qr-block">
           <div class="qr-head">
             <strong>扫码导入</strong>
@@ -628,11 +637,23 @@
           <small class="qr-meta" id="subscriptionQrMeta"></small>
         </div>
         <div class="privacy-note"><svg><use href="#i-shield"/></svg>订阅地址包含节点凭据，请像密码一样保管。</div>
+        <details class="advanced-fields subscription-advanced" id="subscriptionAdvanced">
+          <summary><span><strong>高级选项</strong><small>订阅服务器地址、访问 token、有效期、长链接</small></span><svg><use href="#i-chevron"/></svg></summary>
+          <div class="advanced-body">
+            <label class="field"><span>公开访问地址</span><input id="publicBaseUrl" placeholder="https://your-domain.example" /></label>
+            <div class="form-grid two subscription-security">
+              <label class="field"><span>访问 token</span><input id="subscriptionToken" placeholder="与 SUBSCRIPTION_TOKEN 一致" autocomplete="off" /></label>
+              <label class="field"><span>有效期</span><select id="subscriptionExpiry"><option value="">永久</option><option value="1">1 天</option><option value="7">7 天</option><option value="30">30 天</option></select></label>
+            </div>
+            <label class="field"><span>长链接（备用）</span><div class="copy-field"><input id="subscriptionUrl" readonly /><button id="copySubscriptionBtn" class="secondary-button">复制</button></div></label>
+            <p class="field-footnote">长链接把整份配置编码在网址里，不依赖服务器存储，但节点越多越长；短链接把配置保存在订阅服务器上，二者有效期相同。</p>
+          </div>
+        </details>
       </div>
       <div class="modal-actions"><a class="secondary-button" id="openSubscriptionBtn" href="#" target="_blank" rel="noreferrer">预览</a><a class="primary-button" id="importClientBtn" href="#">导入客户端</a></div>
     </dialog>
 
     <div class="toast" id="toast" role="status"><svg><use href="#i-check"/></svg><span>已复制</span></div>
-    <script type="module" src="/app.js?v=22"></script>
+    <script type="module" src="/app.js?v=23"></script>
   </body>
 </html>

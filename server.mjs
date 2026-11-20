@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { fetchRemoteSubscription } from "./server/remote-subscription.mjs";
 import { issueSignature, loadSigningKey, verifySignature } from "./server/subscription-signing.mjs";
 import { shortSubscriptionStore } from "./server/short-subscriptions.mjs";
+import { MIRRORED_RULE_SETS, ruleSetMirror } from "./server/rule-set-mirror.mjs";
 
 const root = await realpath(fileURLToPath(new URL(".", import.meta.url)));
 const port = Number(process.env.PORT || 4173);
@@ -21,6 +22,14 @@ const maxRequestBytes = 16 * 1024;
 const stateDirectory = process.env.STATE_DIRECTORY || join(root, ".data");
 const signingKey = await loadSigningKey(stateDirectory, process.env.SUBSCRIPTION_SIGNING_KEY || "");
 const shortSubscriptions = shortSubscriptionStore(stateDirectory, signingKey, { maxEntries: Number(process.env.SHORT_LINK_MAX_ENTRIES || 1000) });
+// 大陆规则集镜像：客户端首次启动直接从订阅服务器下载，不依赖代理节点
+const ruleSets = ruleSetMirror(stateDirectory, {
+  upstreamBase: process.env.RULE_SET_UPSTREAM || "",
+  intervalMs: Number(process.env.RULE_SET_SYNC_HOURS || 12) * 60 * 60 * 1000,
+  sync: process.env.RULE_SET_SYNC !== "off"
+});
+await ruleSets.start();
+const ruleSetPath = new RegExp(`^/rule-sets/(${Object.keys(MIRRORED_RULE_SETS).join("|")})\\.srs$`);
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -175,11 +184,34 @@ async function handleRequest(req, res) {
 
   // 供生成页探测目标服务器的要求（不含任何秘密，允许跨域读取）
   if (requestUrl.pathname === "/api/status") {
-    return send(res, 200, JSON.stringify({ tokenRequired: Boolean(subscriptionToken), signatureVersion: 1, shortLinks: true, rateLimit: { windowMs: rateLimitWindowMs, max: rateLimitMax } }) + "\n", {
+    return send(res, 200, JSON.stringify({ tokenRequired: Boolean(subscriptionToken), signatureVersion: 1, shortLinks: true, ruleSets: ruleSets.status(), rateLimit: { windowMs: rateLimitWindowMs, max: rateLimitMax } }) + "\n", {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
       "access-control-allow-origin": "*"
     });
+  }
+
+  // 公开数据，不要求 token 也不限流：反向代理后所有客户端共用一个来源地址，429 会让客户端首次启动失败
+  const ruleSetMatch = requestUrl.pathname.match(ruleSetPath);
+  if (ruleSetMatch) {
+    if (!["GET", "HEAD"].includes(req.method)) return send(res, 405, "Method not allowed\n", { allow: "GET, HEAD" });
+    const entry = ruleSets.get(ruleSetMatch[1]);
+    if (!entry) return send(res, 503, "Rule-set is not synchronized yet\n", { "cache-control": "no-store", "retry-after": "60" });
+    const headers = {
+      "content-type": "application/octet-stream",
+      "cache-control": "public, max-age=3600",
+      etag: entry.etag,
+      "access-control-allow-origin": "*",
+      "x-content-type-options": "nosniff",
+      ...(entry.updatedAt ? { "last-modified": new Date(entry.updatedAt).toUTCString() } : {})
+    };
+    if (req.headers["if-none-match"] === entry.etag) {
+      res.writeHead(304, headers);
+      return res.end();
+    }
+    res.writeHead(200, { ...headers, "content-length": entry.content.length });
+    if (req.method === "HEAD") return res.end();
+    return res.end(entry.content);
   }
 
   if (requestUrl.pathname === "/api/sign-subscription") {
@@ -310,7 +342,8 @@ async function handleRequest(req, res) {
     res.writeHead(200, {
       "content-type": mimeTypes[extname(filePath)] || "application/octet-stream",
       "content-length": content.length,
-      "cache-control": extname(filePath) === ".html" ? "no-cache" : "public, max-age=3600",
+      // index.html 与未带版本号的 /modules/*.js 每次重新验证；app.js 与 styles.css 带 ?v= 版本号
+      "cache-control": extname(filePath) === ".html" || requestedPath.startsWith("/modules/") ? "no-cache" : "public, max-age=3600",
       "x-content-type-options": "nosniff"
     });
     if (req.method === "HEAD") return res.end();
