@@ -1,6 +1,6 @@
-# sing-box 1.14.0 配置生成器路线图
+# sing-box 1.14 配置生成器路线图
 
-本文记录当前完成情况、后续开发顺序和每个阶段的验收标准。目标是逐步覆盖 sing-box 1.14.0 的现代配置模块，同时保持现有官方客户端风格，并避免生成已经弃用、即将移除或仅用于旧版迁移的配置。
+本文记录当前完成情况、后续开发顺序和每个阶段的验收标准。目标是逐步覆盖 sing-box 1.14.x（当前稳定版 1.14.4）的现代配置模块，同时保持现有官方客户端风格，并避免生成已经弃用、即将移除或仅用于旧版迁移的配置。
 
 ## 状态说明
 
@@ -20,7 +20,7 @@
 - [x] Tailscale MagicDNS、SSH、Taildrop、出口节点和系统接口
 - [x] 非弃用 Dial Fields、Listen Fields 和 sing-box 1.14 UDP NAT Fields 基础组件
 - [x] 所有弹窗取消、关闭和 Esc 不触发表单必填验证
-- [x] 当前 Endpoint 生成结果通过 sing-box 1.14.0 内核检查
+- [x] 当前 Endpoint 生成结果通过 sing-box 1.14 内核检查
 - [x] 独立 DNS 模块：15 种 1.14 Server 类型、规则编辑器与全局选项
 - [x] 独立路由模块：全局字段、路由规则编辑器与 Rule Set 管理
 - [x] 独立入站模块：19 种 1.14 入站类型与多入站管理
@@ -30,7 +30,7 @@
 - [x] 跨模块冲突检查：错误会阻止生成订阅链接
 - [x] 通用 Schema 表单渲染器与可排序列表组件，端点、DNS、路由编辑器共用
 
-## 阶段 1：完整 DNS 模块（已完成，待内核复核）
+## 阶段 1：完整 DNS 模块（已完成，已通过内核 check）
 
 ### DNS 全局设置
 
@@ -78,7 +78,7 @@
 - [x] 每类 DNS Server 至少生成一份最小有效配置（`tests/dns.mjs`）
 - [x] FakeIP、真实 DNS 和 Endpoint DNS 可组合使用
 - [x] 1.14 已弃用写法被拦截：直接地址过滤、`independent_cache`、规则动作 `strategy`、`outbound` 规则项
-- [ ] 所有示例通过 sing-box 1.14.0 `check`（本机未安装内核，仍需人工复核）
+- [x] 每类 DNS Server 与 DNS 规则动作通过 sing-box `check`（`tests/kernel-matrix.mjs`，1.14.4 与 1.15.0-alpha.13，仅 `check` 最小模板与常见组合）
 
 ## 跨模块冲突检查（已完成）
 
@@ -94,7 +94,7 @@
 - [x] 出站组：成员或默认成员不存在、成员为空
 - [x] 提醒：缺少 hijack-dns 规则、远程规则集未启用缓存、因出站缺失被跳过的规则
 
-## 阶段 2：完整路由与 Rule Set（已完成，待内核复核）
+## 阶段 2：完整路由与 Rule Set（已完成，已通过内核 check）
 
 ### Route 全局设置
 
@@ -135,9 +135,9 @@
 - [x] 常用分流场景可完全通过界面完成
 - [x] DNS Rule 与 Route Rule 的引用关系正确，缺失出站的规则不会写进配置
 - [x] 规则集标签冲突、多标签占位符与 Headless 字段白名单均有校验（`tests/route.mjs`）
-- [ ] 本地和远程 Rule Set 均通过 1.14.0 内核检查（本机未安装内核，仍需人工复核）
+- [x] Inline、本地和远程 Rule Set 及各路由规则动作通过 sing-box `check`（`tests/kernel-matrix.mjs`，1.14.4 与 1.15.0-alpha.13，仅 `check` 最小模板与常见组合）
 
-## 阶段 3：完整 Inbound（已完成，待内核复核）
+## 阶段 3：完整 Inbound（已完成，已通过内核 check）
 
 ### Inbound 类型
 
@@ -176,9 +176,9 @@
 - [x] 必填项和协议条件字段会动态切换，用户列表按协议校验字段名
 - [x] 已由规则动作取代的旧入站字段（`sniff`、`sniff_override_destination`、`domain_strategy`、`udp_disable_domain_unmapping`）与 `inet4_address` 等旧字段会被拒绝
 - [~] 平台限制以界面说明为准，不会自动隐藏其它平台的字段
-- [ ] 每类 Inbound 通过 1.14.0 内核检查（本机未安装内核，仍需人工复核）
+- [x] 每类 Inbound 通过 sing-box `check`（`tests/kernel-matrix.mjs`，1.14.4 与 1.15.0-alpha.13，仅 `check` 最小模板与常见组合）
 
-## 阶段 4：完整 Outbound 与代理节点（已完成，待内核复核）
+## 阶段 4：完整 Outbound 与代理节点（已完成，已通过内核 check）
 
 ### Outbound 类型
 
@@ -220,7 +220,7 @@ Block 与 DNS 出站已在 1.11 弃用、1.13 移除，改用 `reject` 与 `hija
 - [x] 所有支持的 Outbound 都有独立编辑器（`tests/outbound.mjs`）
 - [x] 分享链接导入、手工编辑和 JSON 生成可往返（`tests/sharelink.mjs`、`tests/importer.mjs`）
 - [x] 组合后的 Selector、URLTest 与 Detour 引用均有效，无效引用会进入冲突清单
-- [ ] 全部出站通过 1.14.0 内核检查（本机未安装内核，界面已提供一键调用）
+- [x] 全部出站通过 sing-box `check`（`tests/kernel-matrix.mjs`，1.14.4 与 1.15.0-alpha.13，仅 `check` 最小模板与常见组合）
 
 ## 阶段 5：共享配置对象（已完成）
 
@@ -245,7 +245,7 @@ Block 与 DNS 出站已在 1.11 弃用、1.13 移除，改用 `reject` 与 `hija
 
 共享对象由统一组件渲染、统一构建器输出：`modules/shared.js` 提供 Dial / Listen / UDP NAT，其余共享块由各模块复用同一套 Schema 表单渲染器。
 
-## 阶段 6：NTP、证书、Experimental 与 Service（已完成，待内核复核）
+## 阶段 6：NTP、证书、Experimental 与 Service（已完成，已通过内核 check）
 
 ### 基础服务
 
@@ -273,7 +273,7 @@ Block 与 DNS 出站已在 1.11 弃用、1.13 移除，改用 `reject` 与 `hija
 - [x] Service 标签与其它顶层标签统一校验
 - [x] API 监听地址默认保持本地安全范围，监听非本机地址时强制要求 secret
 - [x] 需要证书、权限的服务有明确提示
-- [ ] 服务配置通过 1.14.0 内核检查（本机未安装内核）
+- [x] 服务配置通过 sing-box `check`（`tests/kernel-matrix.mjs`，1.14.4 与 1.15.0-alpha.13，仅 `check` 最小模板与常见组合）
 
 ## 阶段 7：导入、订阅和配置往返（已完成）
 
@@ -297,7 +297,7 @@ Block 与 DNS 出站已在 1.11 弃用、1.13 移除，改用 `reject` 与 `hija
 ## 阶段 8：验证、兼容性与发布（基本完成）
 
 - [~] 浏览器内 JSON Schema 校验：提供结构校验、模块字段校验与跨模块冲突检查，未引入完整 JSON Schema 校验器
-- [x] 可选调用本机 sing-box 1.14.0 执行正式 `check`（配置预览工具栏，服务端 `/api/check`）
+- [x] 可选调用本机 sing-box 1.14 执行正式 `check`（配置预览工具栏，服务端 `/api/check`）
 - [x] 显示错误对应的模块与字段（冲突清单带模块标签，内核输出带配置路径）
 - [x] 为每种配置类型补充单元测试（8 个模块测试套件）
 - [x] 为添加、编辑、取消、删除、导入和生成流程补充浏览器测试（`tests/browser.mjs`）
@@ -309,12 +309,12 @@ Block 与 DNS 出站已在 1.11 弃用、1.13 移除，改用 `reject` 与 `hija
 
 ## 开发原则
 
-1. 只以 sing-box 1.14.0 正式文档和正式内核行为为准。
+1. 以 sing-box 1.14.x 最新稳定版的正式文档和内核行为为准；新版本已宣布弃用的字段不作为默认值输出。
 2. 不新增已弃用、准备移除或仅用于旧版迁移的字段。
 3. 每个顶层配置类别使用独立模块注册，不把所有生成逻辑堆回 `app.js`。
 4. 常用字段使用官方客户端风格的可视化表单；长尾字段可以折叠，但不能因此丢失配置能力。
 5. 所有取消按钮必须是非提交按钮，不能被 HTML 必填验证阻止。
-6. 每完成一个阶段，都要同时通过静态检查、浏览器流程检查和 sing-box 1.14.0 内核检查。
+6. 每完成一个阶段，都要同时通过静态检查、浏览器流程检查和 sing-box 1.14 内核检查（`npm run test:kernel:matrix`）。
 7. 涉及系统权限、平台限制、证书、构建标签或公网暴露时，界面必须明确说明风险与适用范围。
 
 ## 推荐执行顺序
@@ -330,7 +330,8 @@ Block 与 DNS 出站已在 1.11 弃用、1.13 移除，改用 `reject` 与 `hija
 
 ## 仍待处理
 
-- 用装有 sing-box 1.14.0 的环境跑一遍各模块示例的 `sing-box check`，把各阶段验收里的内核检查项勾掉（界面已提供一键调用，只需设置 `SING_BOX_BIN`）
+- 内核矩阵只执行 `check`：TUN、auto_redirect、端点连接、服务实际监听等运行期行为仍需在有权限的目标平台验证
+- sing-box 1.15 正式发布后评估新增能力（MASQUE 端点、HTTP 入站/出站的 HTTP/2·HTTP/3·UDP、证书 `certificate_sha256` 固定、Tailcat、`dns_server_address` / `dns_search_domain` 规则项、端点 `on_demand`、Cache File `buffer_size`）；目前仍是 alpha，生成这些字段会让 1.14 客户端无法启动
 - `certificate_provider`、HTTP/2 与 QUIC 长尾字段目前依赖附加参数，可按需补成表单
 - 自动视觉回归与需要特殊构建标签的能力清单
 

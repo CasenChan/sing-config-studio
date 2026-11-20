@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f5f5f5" />
-    <meta name="description" content="sing-box 1.14.0 配置与订阅链接生成器" />
+    <meta name="description" content="sing-box 1.14 配置与订阅链接生成器" />
     <title>sing-box · 配置生成器</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css?v=20" />
@@ -37,7 +37,7 @@
         <div class="brand">
           <strong>sing-box</strong>
           <small>配置订阅生成器</small>
-          <span class="core-version">内核 1.14.0</span>
+          <span class="core-version">内核 1.14.x</span>
         </div>
         <nav class="main-nav" aria-label="主导航">
           <button class="active" data-scroll="profiles" data-title="基础配置" aria-current="page"><svg><use href="#i-grid"/></svg><span>基础配置</span></button>
@@ -54,14 +54,14 @@
       <main class="workspace">
         <header class="topbar">
           <button class="mobile-menu" id="mobileMenu" aria-label="打开导航"><span></span><span></span><span></span></button>
-          <div class="topbar-copy"><h1 id="currentSectionTitle">基础配置</h1><p>sing-box 1.14.0 配置订阅生成器</p></div>
+          <div class="topbar-copy"><h1 id="currentSectionTitle">基础配置</h1><p>sing-box 1.14 配置订阅生成器</p></div>
             <div class="local-mode"><i></i><span>配置保存在本地</span></div>
         </header>
 
         <section class="content" id="profiles">
           <section class="panel profile-panel">
             <div class="panel-title">
-              <div><svg><use href="#i-file"/></svg><strong>基础配置</strong><span class="version-note">1.14.0</span></div>
+              <div><svg><use href="#i-file"/></svg><strong>基础配置</strong><span class="version-note">1.14</span></div>
               <div class="page-actions">
                 <button class="soft-button reset-button" id="resetBtn" title="恢复演示配置"><span>↻</span>恢复示例</button>
                 <button class="soft-button" id="importBtn"><svg><use href="#i-import"/></svg>导入链接</button>
@@ -96,7 +96,7 @@
 
           <section class="panel inbound-panel" id="inbounds">
             <div class="panel-title">
-              <div><svg><use href="#i-import"/></svg><strong>入站</strong><span class="version-note">1.14.0</span></div>
+              <div><svg><use href="#i-import"/></svg><strong>入站</strong><span class="version-note">1.14</span></div>
               <div class="page-actions">
                 <button class="soft-button" id="addInboundBtn" type="button"><svg><use href="#i-plus"/></svg>添加入站</button>
               </div>
@@ -107,7 +107,7 @@
 
           <section class="panel dns-panel" id="dns">
             <div class="panel-title">
-              <div><svg><use href="#i-shield"/></svg><strong>DNS</strong><span class="version-note">1.14.0</span></div>
+              <div><svg><use href="#i-shield"/></svg><strong>DNS</strong><span class="version-note">1.14</span></div>
               <div class="page-actions">
                 <button class="soft-button" id="addDnsServerBtn" type="button"><svg><use href="#i-plus"/></svg>添加 Server</button>
                 <button class="soft-button" id="addDnsRuleBtn" type="button"><svg><use href="#i-plus"/></svg>添加规则</button>
@@ -139,7 +139,7 @@
 
           <section class="panel route-panel" id="settings">
             <div class="panel-title">
-              <div><svg><use href="#i-sliders"/></svg><strong>路由与规则</strong><span class="version-note">1.14.0</span></div>
+              <div><svg><use href="#i-sliders"/></svg><strong>路由与规则</strong><span class="version-note">1.14</span></div>
               <div class="page-actions">
                 <button class="soft-button" id="configureChinaRoutingBtn" type="button">补齐大陆直连</button>
                 <button class="soft-button" id="addRouteRuleBtn" type="button"><svg><use href="#i-plus"/></svg>添加规则</button>
@@ -174,7 +174,7 @@
 
           <section class="panel service-panel" id="services">
             <div class="panel-title">
-              <div><svg><use href="#i-terminal"/></svg><strong>服务与实验性</strong><span class="version-note">1.14.0</span></div>
+              <div><svg><use href="#i-terminal"/></svg><strong>服务与实验性</strong><span class="version-note">1.14</span></div>
               <div class="page-actions">
                 <button class="soft-button" id="addServiceBtn" type="button"><svg><use href="#i-plus"/></svg>添加服务</button>
               </div>
@@ -243,13 +243,13 @@
 
     <dialog class="modal endpoint-type-modal" id="nodeTypeModal">
       <div class="modal-head"><h3>添加出站</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
-      <p class="modal-intro">选择 sing-box 1.14.0 的出站类型。已在 1.11 弃用并移除的 block、dns 出站不再提供，请改用规则动作。</p>
+      <p class="modal-intro">选择 sing-box 1.14 的出站类型。已在 1.11 弃用并移除的 block、dns 出站不再提供，请改用规则动作。</p>
       <div class="endpoint-type-list inbound-type-list" id="nodeTypeList"></div>
     </dialog>
 
     <dialog class="modal endpoint-modal" id="nodeModal">
       <form method="dialog" id="nodeForm">
-        <div class="modal-head"><div><h3 id="nodeModalTitle">添加出站</h3><small id="nodeModalVersion">sing-box 1.14.0</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <div class="modal-head"><div><h3 id="nodeModalTitle">添加出站</h3><small id="nodeModalVersion">sing-box 1.14</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
         <input type="hidden" id="nodeTypeField" />
         <input type="hidden" id="editNodeId" />
         <p class="modal-intro" id="nodeIntro"></p>
@@ -261,7 +261,7 @@
 
     <dialog class="modal endpoint-modal" id="groupModal">
       <form method="dialog" id="groupForm">
-        <div class="modal-head"><div><h3 id="groupModalTitle">添加出站组</h3><small>sing-box 1.14.0 · Selector / URLTest</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <div class="modal-head"><div><h3 id="groupModalTitle">添加出站组</h3><small>sing-box 1.14 · Selector / URLTest</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
         <input type="hidden" id="groupId" />
         <p class="modal-intro">出站组用于在客户端里切换节点。成员可以自动包含全部节点，也可以手动列出。</p>
         <div id="groupFields"></div>
@@ -371,7 +371,7 @@
 
     <dialog class="modal endpoint-type-modal" id="endpointTypeModal">
       <div class="modal-head"><h3>添加端点</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
-      <p class="modal-intro">选择 sing-box 1.14.0 顶层 Endpoint 类型。</p>
+      <p class="modal-intro">选择 sing-box 1.14 顶层 Endpoint 类型。</p>
       <div class="endpoint-type-list">
         <button type="button" data-endpoint-type="wireguard"><span class="endpoint-type-icon"><svg><use href="#i-network"/></svg></span><span><strong>WireGuard</strong><small>现代组网端点 · 1.11+</small></span><svg><use href="#i-chevron"/></svg></button>
         <button type="button" data-endpoint-type="tailscale"><span class="endpoint-type-icon"><svg><use href="#i-network"/></svg></span><span><strong>Tailscale</strong><small>Tailnet、MagicDNS、SSH 与 Taildrop</small></span><svg><use href="#i-chevron"/></svg></button>
@@ -383,7 +383,7 @@
 
     <dialog class="modal endpoint-modal" id="standardEndpointModal">
       <form method="dialog" id="standardEndpointForm">
-        <div class="modal-head"><div><h3 id="standardEndpointModalTitle">添加端点</h3><small id="standardEndpointVersion">sing-box 1.14.0</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <div class="modal-head"><div><h3 id="standardEndpointModalTitle">添加端点</h3><small id="standardEndpointVersion">sing-box 1.14</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
         <input type="hidden" id="standardEndpointType" />
         <input type="hidden" id="standardEndpointId" />
         <p class="modal-intro" id="standardEndpointIntro"></p>
@@ -395,13 +395,13 @@
 
     <dialog class="modal endpoint-type-modal" id="dnsServerTypeModal">
       <div class="modal-head"><h3>添加 DNS Server</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
-      <p class="modal-intro">选择 sing-box 1.14.0 的 DNS Server 类型；不会生成旧版 DNS Server 格式或旧 DNS 特殊出站。</p>
+      <p class="modal-intro">选择 sing-box 1.14 的 DNS Server 类型；不会生成旧版 DNS Server 格式或旧 DNS 特殊出站。</p>
       <div class="endpoint-type-list dns-type-list" id="dnsServerTypeList"></div>
     </dialog>
 
     <dialog class="modal endpoint-modal" id="dnsServerModal">
       <form method="dialog" id="dnsServerForm">
-        <div class="modal-head"><div><h3 id="dnsServerModalTitle">添加 DNS Server</h3><small id="dnsServerModalVersion">sing-box 1.14.0</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <div class="modal-head"><div><h3 id="dnsServerModalTitle">添加 DNS Server</h3><small id="dnsServerModalVersion">sing-box 1.14</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
         <input type="hidden" id="dnsServerType" />
         <input type="hidden" id="dnsServerId" />
         <p class="modal-intro" id="dnsServerIntro"></p>
@@ -441,7 +441,7 @@
 
     <dialog class="modal endpoint-modal" id="dnsRuleModal">
       <form method="dialog" id="dnsRuleForm">
-        <div class="modal-head"><div><h3 id="dnsRuleModalTitle">添加 DNS 规则</h3><small>sing-box 1.14.0 · DNS Rule</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <div class="modal-head"><div><h3 id="dnsRuleModalTitle">添加 DNS 规则</h3><small>sing-box 1.14 · DNS Rule</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
         <input type="hidden" id="dnsRuleId" />
         <p class="modal-intro">匹配条件之间是「与」关系，留空即不限制。响应匹配字段需要先由 evaluate 规则求值。</p>
         <div id="dnsRuleFields"></div>
@@ -452,13 +452,13 @@
 
     <dialog class="modal endpoint-type-modal" id="serviceTypeModal">
       <div class="modal-head"><h3>添加服务</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
-      <p class="modal-intro">选择 sing-box 1.14.0 的顶层 Service 类型。部分服务需要对应构建标签或系统权限。</p>
+      <p class="modal-intro">选择 sing-box 1.14 的顶层 Service 类型。部分服务需要对应构建标签或系统权限。</p>
       <div class="endpoint-type-list inbound-type-list" id="serviceTypeList"></div>
     </dialog>
 
     <dialog class="modal endpoint-modal" id="serviceModal">
       <form method="dialog" id="serviceForm">
-        <div class="modal-head"><div><h3 id="serviceModalTitle">添加服务</h3><small id="serviceModalVersion">sing-box 1.14.0</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <div class="modal-head"><div><h3 id="serviceModalTitle">添加服务</h3><small id="serviceModalVersion">sing-box 1.14</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
         <input type="hidden" id="serviceType" />
         <input type="hidden" id="serviceId" />
         <p class="modal-intro" id="serviceIntro"></p>
@@ -470,13 +470,13 @@
 
     <dialog class="modal endpoint-type-modal" id="inboundTypeModal">
       <div class="modal-head"><h3>添加入站</h3><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
-      <p class="modal-intro">选择 sing-box 1.14.0 的入站类型。旧的 sniff、domain_strategy 等入站字段已由规则动作取代，不会生成。</p>
+      <p class="modal-intro">选择 sing-box 1.14 的入站类型。旧的 sniff、domain_strategy 等入站字段已由规则动作取代，不会生成。</p>
       <div class="endpoint-type-list inbound-type-list" id="inboundTypeList"></div>
     </dialog>
 
     <dialog class="modal endpoint-modal" id="inboundModal">
       <form method="dialog" id="inboundForm">
-        <div class="modal-head"><div><h3 id="inboundModalTitle">添加入站</h3><small id="inboundModalVersion">sing-box 1.14.0</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <div class="modal-head"><div><h3 id="inboundModalTitle">添加入站</h3><small id="inboundModalVersion">sing-box 1.14</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
         <input type="hidden" id="inboundType" />
         <input type="hidden" id="inboundId" />
         <p class="modal-intro" id="inboundIntro"></p>
@@ -488,7 +488,7 @@
 
     <dialog class="modal endpoint-modal" id="routeRuleModal">
       <form method="dialog" id="routeRuleForm">
-        <div class="modal-head"><div><h3 id="routeRuleModalTitle">添加路由规则</h3><small>sing-box 1.14.0 · Route Rule</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <div class="modal-head"><div><h3 id="routeRuleModalTitle">添加路由规则</h3><small>sing-box 1.14 · Route Rule</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
         <input type="hidden" id="routeRuleId" />
         <p class="modal-intro">匹配条件之间是「与」关系，留空即不限制。不提供已移除的 GeoIP / Geosite 与已弃用的顶层 outbound 写法。</p>
         <div id="routeRuleFields"></div>
@@ -505,7 +505,7 @@
 
     <dialog class="modal endpoint-modal" id="ruleSetModal">
       <form method="dialog" id="ruleSetForm">
-        <div class="modal-head"><div><h3 id="ruleSetModalTitle">添加规则集</h3><small id="ruleSetModalVersion">sing-box 1.14.0</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
+        <div class="modal-head"><div><h3 id="ruleSetModalTitle">添加规则集</h3><small id="ruleSetModalVersion">sing-box 1.14</small></div><button type="button" class="modal-icon dialog-close" aria-label="关闭"><svg><use href="#i-x"/></svg></button></div>
         <input type="hidden" id="ruleSetType" />
         <input type="hidden" id="ruleSetId" />
         <p class="modal-intro" id="ruleSetIntro"></p>
@@ -633,6 +633,6 @@
     </dialog>
 
     <div class="toast" id="toast" role="status"><svg><use href="#i-check"/></svg><span>已复制</span></div>
-    <script type="module" src="/app.js?v=21"></script>
+    <script type="module" src="/app.js?v=22"></script>
   </body>
 </html>

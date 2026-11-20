@@ -546,6 +546,8 @@ export function importConfig(config) {
     rules: (config.route?.rules || []).map(importRouteRule),
     ruleSets: (config.route?.rule_set || []).map(importRuleSet)
   });
+  const removedDirect = routeState.rules.filter((rule) => rule.action === "direct").length;
+  if (removedDirect) notices.push({ level: "warning", message: `${removedDirect} 条路由规则使用了 1.14.x 已移除的 direct 动作，导入后需要改为 route 到带拨号设置的 Direct 出站` });
 
   const serviceState = normalizeServiceState({
     httpClientsJson: config.http_clients ? JSON.stringify(stripDeprecated(config.http_clients), null, 2) : "",

@@ -236,12 +236,34 @@ export function validateService(source, { services = [], outboundTags = [] } = {
     if (!String(service.server || "").trim()) return "请填写 USB/IP 服务器地址";
     if (!optionalPort(service.serverPort)) return "USB/IP 端口必须在 1–65535 之间";
   }
+  if (service.type === "derp" && !String(service.configPath || "").trim()) return "DERP 需要填写配置文件路径（config_path，例如 derper.key）";
   if (["usbip-server", "usbip-client"].includes(service.type)) {
+    let devices;
     try {
-      parseJsonArray(service.devicesJson, "设备列表");
+      devices = parseJsonArray(service.devicesJson, "设备列表");
     } catch (error) {
       return error.message;
     }
+    const deviceError = validateUsbDevices(devices);
+    if (deviceError) return deviceError;
+    if (service.type === "usbip-server" && (!service.provider || service.provider === "default") && !devices.length) {
+      return "默认 provider 需要至少一个设备匹配（bus_id、vendor_id、product_id 或 serial）";
+    }
+  }
+  return "";
+}
+
+const USB_DEVICE_KEYS = new Set(["bus_id", "vendor_id", "product_id", "serial"]);
+
+function validateUsbDevices(devices) {
+  for (const [index, device] of devices.entries()) {
+    const label = `设备 ${index + 1}`;
+    if (!device || typeof device !== "object" || Array.isArray(device)) return `${label}必须是对象`;
+    const unknown = Object.keys(device).find((key) => !USB_DEVICE_KEYS.has(key));
+    if (unknown) return `${label}含有不支持的字段：${unknown}（可用 bus_id、vendor_id、product_id、serial）`;
+    if (!Object.keys(device).length) return `${label}至少需要一个匹配字段`;
+    const notNumber = ["vendor_id", "product_id"].find((key) => key in device && !Number.isInteger(device[key]));
+    if (notNumber) return `${label}的 ${notNumber} 必须是数字`;
   }
   return "";
 }

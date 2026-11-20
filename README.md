@@ -1,6 +1,6 @@
 # sing-box 配置订阅生成器
 
-一个本地优先的 sing-box 1.14.0 配置与订阅链接生成页面。界面沿用官方 sing-box for Desktop 的浅色视觉语言，所有配置能力按官方模块拆分，生成的配置只使用 1.14.0 的现代写法。
+一个本地优先的 sing-box 1.14 配置与订阅链接生成页面。界面沿用官方 sing-box for Desktop 的浅色视觉语言，所有配置能力按官方模块拆分，生成的配置只使用 1.14.x 的现代写法（以当前稳定版 1.14.4 为准），并避开 1.15 已宣布弃用的字段，以便客户端升级后继续可用。
 
 后续规划与验收标准见 [ROADMAP.md](./ROADMAP.md)。
 
@@ -19,6 +19,8 @@ npm start
 ### 出站与节点
 
 - 17 种出站类型：Direct、Bridge、SOCKS、HTTP、Shadowsocks、VMess、VLESS、Trojan、Naive、Hysteria、Hysteria 2、ShadowTLS、TUIC、AnyTLS、Snell、Tor、SSH
+- Shadowsocks 2022 密钥按方法校验长度（`sing-box generate rand --base64 16/32`），出站支持冒号分隔的 EIH 多密钥（仅 AES 方法）；入站 2022 多用户同时输出服务端 PSK
+- Naive 只输出内核支持的 TLS 字段（SNI、CA 证书、ECH）；uTLS 指纹由 Cronet 处理，默认指纹会自动省略
 - 完整 TLS 客户端：uTLS 指纹、ECH、REALITY、TLS 分片与记录分片、ALPN、版本范围、自定义 CA
 - REALITY 对 TCP 类 TLS 协议开放（VLESS / VMess / Trojan / AnyTLS / HTTP，出站与入站两侧），QUIC 类协议（Hysteria / Hysteria 2 / TUIC）会被明确拒绝——内核的 REALITY 客户端无法提供 QUIC 所需的标准 TLS 配置
 - V2Ray 传输层、Multiplex、TCP Brutal、UDP over TCP 与全部非弃用 Dial Fields
@@ -35,6 +37,7 @@ npm start
 - 19 种入站类型：Mixed、SOCKS、HTTP、Direct、TUN、Redirect、TProxy、Shadowsocks、VMess、VLESS、Trojan、Naive、Hysteria、Hysteria 2、ShadowTLS、TUIC、AnyTLS、Snell、Cloudflared
 - TLS 服务端（含 REALITY 服务端：握手目标、私钥、Short ID）、按协议校验的用户列表、Multiplex、TCP Brutal、V2Ray 传输层、UDP NAT
 - TUN 完整平台字段：`dns_mode`(1.14)、auto_route / auto_redirect、路由范围、UID / 包名 / MAC / 接口过滤、iproute2、platform
+- 新建 TUN 不写 `stack`：1.14 官方构建默认即 `mixed`，1.15 起使用新的内置协议栈（`stack` 在 1.15 弃用、1.17 移除）。已保存或导入的显式 `stack` 保持不变
 
 ### 端点
 
@@ -55,7 +58,7 @@ npm start
 
 预设保留节点、出站组、分流和已有 DNS 规则的优先级，补充 `localhost`、`.lan`、`.local`、`.home.arpa` 的真实 DNS 例外，再把支持的 A / AAAA 查询交给 FakeIP。其他查询使用真实默认 DNS，缺少默认 DNS 或节点解析器时使用直连 Local DNS。Tailscale 的 MagicDNS 仍优先匹配。预设根据 DNS 策略、TUN 地址族和地址池决定 A / AAAA；IPv4 和 IPv6 地址池可以只填其中一个。
 
-预设复用启用的 TUN，或按项目默认双栈地址与 `mixed` 栈补建，开启自动路由、DNS 接管及映射缓存，并保留缓存路径和固定出口接口。地址池重叠、TUN 路由排除范围、无共同地址族、缺失引用及完全遮挡 FakeIP 的前置终止规则会阻止应用。复杂 DNS 条件和外部路由规则集会提示需要核对。
+预设复用启用的 TUN，或按项目默认双栈地址与内核默认协议栈补建，开启自动路由、DNS 接管及映射缓存，并保留缓存路径和固定出口接口。地址池重叠、TUN 路由排除范围、无共同地址族、缺失引用及完全遮挡 FakeIP 的前置终止规则会阻止应用。复杂 DNS 条件和外部路由规则集会提示需要核对。
 
 再次点击一键配置可补齐被删除的项目，不重复添加，也不覆盖手动修改。删除已关联的 FakeIP 时，可以预览并选择「删除并清理关联配置」「仅删除 FakeIP」或「取消」。清理只删除仍保持预设原样且无其他引用的新增项目，并还原仍等于预设应用值的字段；手动修改、原有项目和仍被其他预设使用的资源会保留。最后一份关联解除时才考虑清理共享资源；选择「仅删除」保留的共享资源也不会随后被另一份预设清掉。残留引用会显示在冲突检查中，修正前不能生成订阅。
 
@@ -105,7 +108,7 @@ sing-box 1.14 同一配置只支持一个启用的 FakeIP Server，因此多个�
 - 路由与 DNS 规则引用了不存在的入站、出站、DNS Server 或规则集，出站组成员不存在
 - Clash API / sing-box API 监听非本机地址却没有设置 secret
 
-提醒级别（不阻止生成）包括：缺少 hijack-dns 规则、FakeIP 没有被任何规则使用、远程规则集未启用缓存、因出站缺失被跳过的规则等。
+提醒级别（不阻止生成）包括：TUN 下缺少 hijack-dns 规则（按 `dns_mode` 与 `dns_address` 给出不同说明）、FakeIP 没有被任何规则使用、远程规则集未启用缓存、因出站缺失被跳过的规则等。
 
 ## 部署
 
@@ -173,9 +176,9 @@ location / {
 | `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX` | 限流窗口与上限，默认 60 秒 60 次 |
 | `SING_BOX_BIN` | 本机 sing-box 可执行文件路径，用于 `/api/check` |
 
-## 1.14.0 兼容性
+## 1.14 兼容性
 
-生成器只输出 1.14.0 的现代写法，以下内容不会出现在结果里：
+生成器只输出 1.14.x 的现代写法，以下内容不会出现在结果里：
 
 - 旧 DNS 特殊出站、旧版 DNS Server 格式（`address` / `address_resolver` / `address_strategy`）与 `dns.fakeip` 旧块
 - GeoIP / Geosite、`rule_set_ipcidr_match_source`、`rule_set_ip_cidr_accept_empty`
@@ -184,6 +187,10 @@ location / {
 - TUN 的 `inet4_address` 等已合并字段、`gso`、`endpoint_independent_nat`
 - WireGuard outbound、OpenVPN `static_key` 模式、`independent_cache`、`store_rdrc`、`download_detour`、旧 Hysteria 调优字段
 - 已在 1.14 移除的 Dial Field `domain_strategy`
+- 1.14.0 曾提供、1.14.x 已移除的 `direct` 路由规则动作（导入时会提示改为 route 到带拨号设置的 Direct 出站）
+- 1.15 弃用的 TUN `stack`（新建 TUN 不再写入）
+
+1.14.x 补丁版本的其它变化也已同步：FakeIP 新建服务器的 IPv6 段默认改为官方示例的 `2001:2::/48`（已保存的地址池不变）；TUN `dns_mode` 留空时，启用 `auto_route` 为 `hijack`、否则为 `disabled`；内核自动接管只覆盖发往接口 DNS 地址的查询，设置 `dns_address` 后连这一项也需要显式的 `hijack-dns` 规则，应用直接使用其它 DNS 服务器时同样需要（冲突检查会提示；这部分依据官方文档，尚未在 TUN 环境实测）；`route-options` 的 `tls_fragment` 与 `tls_record_fragment` 互斥且不能为空；DERP 必须填写 `config_path`；默认 provider 的 USB/IP Server 至少需要一个设备匹配；VMess / VLESS / Trojan / Shadowsocks 用户的 `name` 可省略。
 
 各模块的「附加参数」会按类型校验字段名：不属于该类型的 1.14 字段、以及上面这些弃用字段都会被拒绝。
 
@@ -222,6 +229,7 @@ npm run test:logic # 基础逻辑修复的模块回归（浏览器回归已包�
 SING_BOX_BIN=/path/to/sing-box npm run test:fakeip:kernel
 SING_BOX_BIN=/path/to/sing-box npm run test:china:kernel # 先运行浏览器测试生成默认配置
 SING_BOX_BIN=/path/to/sing-box npm run test:logic:kernel # 本机 HTTP Client、无代理下载、TCP/UDP 真实启动
+SING_BOX_BIN=/path/to/sing-box npm run test:kernel:matrix # 每种入站/出站/端点/DNS/规则动作/服务逐个 check
 ```
 
 浏览器流程测试需要 `playwright-core` 与本机 Chrome/Chromium（可用 `CHROME_PATH` 指定），缺少时会自动跳过。
@@ -235,6 +243,8 @@ SING_BOX_BIN=/path/to/sing-box npm run test:logic:kernel # 本机 HTTP Client、
 大陆分流内核测试下载官方 SRS，检查默认配置，并运行真实 sing-box 1.14 验证百度／QQ 域名、大陆和国外 IP、Rule／Global／Direct 切换，以及国内真实 DNS 与国外 FakeIP 的域名映射。测试出口接本机 HTTP 接收器，不创建 TUN、不连接目标网站；结果保存在 `output/china-kernel/verification.txt`。实际部署首次下载规则集需要可用节点和网络，下载出口可在规则集的 HTTP Client 中调整。
 
 FakeIP 浏览器测试覆盖弹窗入口、普通保存、保存并应用、取消／关闭／Esc、重复应用、改名／复制、两种删除、清理预览、存储失败、刷新、空列表、多 TUN 和备份恢复。截图保存在 `output/playwright/`。内核测试要求 sing-box 1.14，检查双栈、IPv4、IPv6、已有真实 DNS、MagicDNS，以及浏览器测试输出的默认示例；配置和结果写入 `output/fakeip-kernel/`。该测试只执行 `check`，不创建 TUN；真实 DNS 回答、域名分流及重启后的映射持久化需在有 TUN 权限的目标环境另行验证。
+
+内核矩阵测试先让每个用例通过本项目自己的校验器，再交给内核 `check`：校验器放行但内核拒绝记为 BUG，只有校验器拒绝记为 STRICT，两边都拒绝的是有意的反例。它只覆盖各类型的最小模板与常见组合，不启动服务；报告写入 `output/kernel-matrix/<版本>/report.txt`。当前在 sing-box 1.14.4 与 1.15.0-alpha.13 上均无 BUG / STRICT。
 
 上线前建议再用目标平台的正式内核复核一次：
 

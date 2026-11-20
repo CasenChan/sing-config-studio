@@ -29,7 +29,8 @@ assert.equal(config.dns.final, "local-dns");
 assert.equal(config.route.default_domain_resolver, "local-dns");
 assert.deepEqual(config.route.rules[0], { inbound: ["tun-in"], port: [53], action: "hijack-dns" });
 assert.deepEqual(config.inbounds[0].address, ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]);
-assert.equal(config.inbounds[0].stack, "mixed");
+// 不写 stack：1.14 官方构建默认 mixed，1.15 起使用新协议栈（stack 在 1.15 弃用）
+assert.equal("stack" in config.inbounds[0], false);
 assert.equal(config.inbounds[0].dns_mode, "hijack");
 assert.equal(config.experimental.cache_file.store_fakeip, true);
 assert.equal(config.experimental.cache_file.path, "custom-cache.db");

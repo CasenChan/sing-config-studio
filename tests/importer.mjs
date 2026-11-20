@@ -155,4 +155,6 @@ assert.equal(outboundModule.extendConfig({}, state).outbounds.filter(item => ite
 // 远程节点与完整 JSON 共用反序列化器，保留高级 TLS、传输、多路复用与拨号配置。
 const remote = { type: "trojan", tag: "advanced-remote", server: "remote.example.com", server_port: 443, password: "p", bind_interface: "en0", connect_timeout: "9s", tcp_fast_open: true, domain_resolver: { server: "local-dns", strategy: "prefer_ipv4" }, tls: { enabled: true, server_name: "remote.example.com", alpn: ["h2", "http/1.1"], utls: { enabled: true, fingerprint: "chrome" }, ech: { enabled: true, config: ["test-config"] }, fragment: true, kernel_tx: true }, transport: { type: "ws", path: "/ws", headers: { Host: "cdn.example.com" }, max_early_data: 2048, early_data_header_name: "Sec-WebSocket-Protocol" }, multiplex: { enabled: true, protocol: "h2mux", max_connections: 4, padding: true, brutal: { enabled: true, up_mbps: 20, down_mbps: 100 } } };
 assert.deepEqual(buildOutbound(importOutbound(remote, 0)), remote);
+const legacyDirect = importConfig({ inbounds: [{ type: "mixed", tag: "m", listen_port: 1080 }], outbounds: [{ type: "direct", tag: "direct" }], route: { rules: [{ ip_is_private: true, action: "direct", bind_interface: "eth0" }] } });
+assert.ok(legacyDirect.notices.some((notice) => /已移除的 direct 动作/.test(notice.message)), "导入 1.14.0 的 direct 动作应提示迁移");
 console.log("importer round-trip tests passed");

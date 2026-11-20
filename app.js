@@ -32,6 +32,7 @@ import {
 } from "./modules/services.js";
 import {
   GROUP_TYPE_META,
+  NAIVE_UNSUPPORTED_TLS,
   OUTBOUND_GROUP_LABELS,
   OUTBOUND_TYPE_META,
   buildOutbound,
@@ -133,8 +134,7 @@ const defaultState = planChinaRouting({
       enabled: true,
       address: "172.19.0.1/30, fdfe:dcba:9876::1/126",
       autoRoute: true,
-      strictRoute: true,
-      stack: "mixed"
+      strictRoute: true
     }
   ],
   subscriptions: [],
@@ -604,11 +604,20 @@ function showGenerationError(message) {
   $("#deprecatedCount").textContent = "—";
 }
 
-function renderConfig({ persist = true } = {}) {
+function renderConfig(options) {
   readSettings();
   readDnsSettings();
   readRouteSettings();
   readServiceSettings();
+  renderNodeTags = computeNodeTagList();
+  try {
+    renderConfigFromState(options);
+  } finally {
+    renderNodeTags = null;
+  }
+}
+
+function renderConfigFromState({ persist = true } = {}) {
   let config;
   try {
     config = generateConfig();
@@ -1965,7 +1974,7 @@ const DNS_SERVER_FIELDS = {
   fakeip: {
     fields: [
       { key: "inet4Range", label: "IPv4 段", placeholder: "198.18.0.0/15（可留空仅用 IPv6）" },
-      { key: "inet6Range", label: "IPv6 段", placeholder: "fc00::/18" }
+      { key: "inet6Range", label: "IPv6 段", placeholder: "2001:2::/48" }
     ]
   },
   resolved: {
@@ -2289,7 +2298,7 @@ function openDnsServerModal(type, server = null) {
   $("#dnsServerType").value = type;
   $("#dnsServerId").value = server?.id || makeId();
   $("#dnsServerModalTitle").textContent = `${server ? "编辑" : "添加"} ${schema.title}`;
-  $("#dnsServerModalVersion").textContent = `sing-box 1.14.0 · type: ${type}`;
+  $("#dnsServerModalVersion").textContent = `sing-box 1.14 · type: ${type}`;
   $("#dnsServerIntro").textContent = schema.intro;
   $("#dnsServerFields").innerHTML = renderSchemaForm(schema, value, { value });
   pendingFakeipPreset = false;
@@ -2735,8 +2744,16 @@ $("#dnsRuleForm").addEventListener("submit", (event) => {
   showToast(index >= 0 ? "DNS 规则已更新" : "DNS 规则已添加");
 });
 
-function nodeTagList() {
+// renderConfig 期间节点不变，但十余个校验上下文都会调用 nodeTagList；
+// 每次都重新校验全部节点会让每次按键随节点数线性放大，因此在单次渲染内复用结果。
+let renderNodeTags = null;
+
+function computeNodeTagList() {
   return state.nodes.filter(nodeIsComplete).map((node) => String(node.tag || "").trim()).filter(Boolean);
+}
+
+function nodeTagList() {
+  return renderNodeTags ? [...renderNodeTags] : computeNodeTagList();
 }
 
 function activeGroups() {
@@ -3138,7 +3155,7 @@ function openRuleSetModal(type, set = null) {
   $("#ruleSetType").value = type;
   $("#ruleSetId").value = set?.id || "";
   $("#ruleSetModalTitle").textContent = `${set ? "编辑" : "添加"} ${schema.title}`;
-  $("#ruleSetModalVersion").textContent = `sing-box 1.14.0 · type: ${type}`;
+  $("#ruleSetModalVersion").textContent = `sing-box 1.14 · type: ${type}`;
   $("#ruleSetIntro").textContent = schema.intro;
   $("#ruleSetFields").innerHTML = renderSchemaForm(schema, value, { value });
   headlessDraft = type === "inline" ? value.headlessRules.map(normalizeHeadlessRule) : [];
@@ -3542,8 +3559,8 @@ const INBOUND_FIELDS = {
       { key: "interfaceName", label: "接口名称", placeholder: "自动，例如 tun0 / utun" },
       { key: "mtu", label: "MTU", type: "number", min: 576, placeholder: "9000" },
       { key: "address", label: "接口地址", required: true, full: true, placeholder: "172.19.0.1/30, fdfe:dcba:9876::1/126" },
-      { key: "stack", label: "网络栈", type: "select", options: [["mixed", "Mixed"], ["system", "System"], ["gvisor", "gVisor"]] },
-      { key: "dnsMode", label: "DNS 模式", badge: "1.14", type: "select", options: [["", "内核默认"], ["hijack", "劫持到 DNS 模块"], ["native", "使用系统解析"], ["disabled", "关闭"]] },
+      { key: "stack", label: "网络栈", type: "select", options: [["", "内核默认（推荐）"], ["mixed", "Mixed"], ["system", "System"], ["gvisor", "gVisor"]] },
+      { key: "dnsMode", label: "DNS 模式", badge: "1.14", type: "select", options: [["", "内核默认（auto_route 时 hijack，否则 disabled）"], ["hijack", "hijack · 设置接口 DNS 并劫持 53 端口"], ["native", "native · 只设置接口 DNS"], ["disabled", "disabled · 不设置也不劫持"]] },
       { key: "dnsAddress", label: "TUN DNS 地址", placeholder: "例如 172.19.0.2" },
       { key: "netns", label: "网络命名空间", placeholder: "Linux only" }
     ],
@@ -3661,8 +3678,8 @@ const TUN_ROUTE_GROUP = {
   fields: [
     { key: "routeAddress", label: "路由地址", full: true, placeholder: "0.0.0.0/1, 128.0.0.0/1" },
     { key: "routeExcludeAddress", label: "排除路由地址", full: true, placeholder: "192.168.0.0/16" },
-    { key: "routeAddressSet", label: "路由规则集", placeholder: "规则集标签，需 auto_route" },
-    { key: "routeExcludeAddressSet", label: "排除路由规则集", placeholder: "规则集标签" },
+    { key: "routeAddressSet", label: "路由规则集", placeholder: "规则集标签，需 auto_route；Android / Apple 图形客户端不支持" },
+    { key: "routeExcludeAddressSet", label: "排除路由规则集", placeholder: "规则集标签；Android / Apple 图形客户端不支持" },
     { key: "includeInterface", label: "仅包含接口", placeholder: "en0" },
     { key: "excludeInterface", label: "排除接口", placeholder: "en1" },
     { key: "includeUid", label: "仅包含 UID", placeholder: "1000" },
@@ -3752,7 +3769,7 @@ function openInboundModal(type, inbound = null) {
   $("#inboundType").value = type;
   $("#inboundId").value = inbound?.id || "";
   $("#inboundModalTitle").textContent = `${inbound ? "编辑" : "添加"} ${schema.title}`;
-  $("#inboundModalVersion").textContent = `sing-box 1.14.0 · type: ${type}`;
+  $("#inboundModalVersion").textContent = `sing-box 1.14 · type: ${type}`;
   $("#inboundIntro").textContent = schema.intro;
   $("#inboundFields").innerHTML = renderSchemaForm(schema, value, { value });
   $("#inboundModal").showModal();
@@ -3771,7 +3788,7 @@ function readInboundForm() {
 }
 
 function inboundSummary(inbound) {
-  if (inbound.type === "tun") return `${inbound.address || "待填写地址"} · ${inbound.stack || "mixed"}${inbound.autoRoute ? " · 自动路由" : ""}`;
+  if (inbound.type === "tun") return `${inbound.address || "待填写地址"} · ${inbound.stack || "默认栈"}${inbound.autoRoute ? " · 自动路由" : ""}`;
   if (inbound.type === "cloudflared") return inbound.token ? "已配置 Tunnel Token" : "待填写 Token";
   const listen = `${inbound.listen || "::"}:${inbound.listenPort || "—"}`;
   const meta = INBOUND_TYPE_META[inbound.type];
@@ -3882,8 +3899,10 @@ let currentConflicts = [];
 
 function collectModuleIssues() {
   const issues = [];
+  // 上下文只算一次：每次构造都会重新校验全部节点，放在循环里会变成 O(n²)
+  const nodeContext = nodeValidationContext();
   for (const node of state.nodes) {
-    const error = validateOutbound(node, nodeValidationContext());
+    const error = validateOutbound(node, nodeContext);
     if (error) issues.push({ level: "error", scope: "出站", message: `节点「${node.tag || "未命名"}」：${error}` });
   }
   for (const group of state.groups || []) {
@@ -3948,6 +3967,15 @@ const nodeTlsGroup = {
     { key: "tlsFragment", label: "TLS 分片", note: "tls fragment · 性能较差" },
     { key: "tlsRecordFragment", label: "TLS 记录分片", note: "record_fragment" }
   ]
+};
+
+// Naive 走 Cronet，TLS 只开放内核支持的 SNI 与 CA 证书（ECH 在单独分组）
+const nodeLimitedTlsGroup = {
+  key: "tls",
+  title: "TLS 客户端",
+  note: "Naive 使用 Chromium 网络栈，TLS 指纹由内核处理，只支持 SNI、CA 证书与 ECH。",
+  fields: nodeTlsGroup.fields.filter((field) => ["sni", "tlsCertificatePath", "tlsCertificate"].includes(field.key)),
+  switches: [{ key: "tls", label: "启用 TLS", note: "Naive 必须启用" }]
 };
 
 const nodeRealityGroup = {
@@ -4201,7 +4229,7 @@ function nodeSchema(type) {
   }
   basic.fields.push(...(custom.fields || []));
   const groups = [basic];
-  if (meta.tls) groups.push(nodeTlsGroup);
+  if (meta.tls) groups.push(meta.limitedTls ? nodeLimitedTlsGroup : nodeTlsGroup);
   if (meta.reality) groups.push(nodeRealityGroup);
   else if (meta.tls) groups.push(nodeEchGroup);
   if (meta.transport) groups.push(nodeTransportGroup);
@@ -4251,7 +4279,7 @@ function openNodeModal(node = null, forcedType = null) {
   $("#nodeTypeField").value = type;
   $("#editNodeId").value = node?.id || "";
   $("#nodeModalTitle").textContent = `${node ? "编辑" : "添加"} ${schema.title}`;
-  $("#nodeModalVersion").textContent = `sing-box 1.14.0 · type: ${type}`;
+  $("#nodeModalVersion").textContent = `sing-box 1.14 · type: ${type}`;
   $("#nodeIntro").textContent = schema.intro;
   $("#nodeFields").innerHTML = renderSchemaForm(schema, value, { value });
   $("#nodeModal").showModal();
@@ -4262,11 +4290,17 @@ function readNodeForm() {
   const type = $("#nodeTypeField").value;
   const id = $("#editNodeId").value || makeId();
   const existing = state.nodes.find((node) => node.id === id) || {};
+  // Naive 表单不显示内核不支持的 TLS 字段；保存时一并清掉，避免导入带来的隐藏值让节点永远无法通过校验
+  const defaults = normalizeOutbound({ type });
+  const cleared = OUTBOUND_TYPE_META[type]?.limitedTls
+    ? Object.fromEntries(NAIVE_UNSUPPORTED_TLS.map(([key]) => [key, defaults[key]]))
+    : {};
   return normalizeOutbound({
     ...existing,
     type,
     id,
     enabled: existing.enabled !== false,
+    ...cleared,
     ...readSchemaForm(nodeSchema(type), $("#nodeFields"))
   });
 }
@@ -4543,7 +4577,7 @@ const SERVICE_FIELDS = {
     fields: [
       { key: "listen", label: "监听地址", placeholder: "127.0.0.1" },
       { key: "listenPort", label: "监听端口", type: "number", min: 1, max: 65535, placeholder: "3240" },
-      { key: "provider", label: "设备来源", type: "select", options: [["", "默认"], ["default", "default · 固定列表"], ["dynamic", "dynamic · 自动发现"]] },
+      { key: "provider", label: "设备来源", type: "select", options: [["", "默认"], ["default", "default · 固定列表"], ["dynamic", "dynamic · 由 API 客户端提供"]] },
       { key: "devicesJson", label: "设备列表", type: "textarea", rows: 4, full: true, className: "json-field", placeholder: '[{"bus_id": "1-1"}]' }
     ]
   },
@@ -4628,7 +4662,7 @@ function openServiceModal(type, service = null) {
   $("#serviceType").value = type;
   $("#serviceId").value = service?.id || "";
   $("#serviceModalTitle").textContent = `${service ? "编辑" : "添加"} ${schema.title}`;
-  $("#serviceModalVersion").textContent = `sing-box 1.14.0 · type: ${type}`;
+  $("#serviceModalVersion").textContent = `sing-box 1.14 · type: ${type}`;
   $("#serviceIntro").textContent = schema.intro;
   $("#serviceFields").innerHTML = renderSchemaForm(schema, value, { value });
   $("#serviceModal").showModal();

@@ -71,6 +71,7 @@ assert.deepEqual(detectConflicts(fixedLoop), []);
 
 const noHijack = baseConfig();
 noHijack.route.rules = [{ action: "sniff" }];
+noHijack.inbounds[0].dns_mode = "disabled";
 const noHijackIssues = detectConflicts(noHijack);
 assert.ok(messages(noHijackIssues).some((m) => m.includes("hijack-dns")));
 assert.equal(hasBlockingConflicts(noHijackIssues), false, "缺少 hijack-dns 只是提醒");
@@ -165,3 +166,18 @@ assert.ok(cycleIssues.some((item) => item.message.includes("环路")));
 assert.equal(hasBlockingConflicts(cycleIssues), true);
 
 console.log("conflict detour cycle test passed");
+
+// 1.14.x TUN DNS：auto_route 下默认 hijack 派生地址；显式 dns_address 或 disabled 需要 hijack-dns 规则
+const tunDns = (tun) => {
+  const config = baseConfig();
+  config.route.rules = config.route.rules.filter((rule) => rule.action !== "hijack-dns");
+  config.inbounds[0] = { ...config.inbounds[0], ...tun };
+  return messages(detectConflicts(config)).filter((message) => message.includes("hijack-dns"));
+};
+assert.match(tunDns({})[0], /只自动接管发往接口 DNS 地址的查询/, "auto_route 默认 hijack 只覆盖派生 DNS 地址");
+assert.match(tunDns({ auto_route: false })[0], /没有 hijack-dns 规则/);
+assert.match(tunDns({ dns_mode: "disabled" })[0], /没有 hijack-dns 规则/);
+assert.match(tunDns({ dns_address: ["172.19.0.2"] })[0], /tun-in 设置了 dns_address/);
+assert.match(tunDns({ dns_mode: "native" })[0], /只自动接管/);
+assert.equal(tunDns({}).length, 1, "每种情况只给一条提醒");
+console.log("conflict tun dns test passed");

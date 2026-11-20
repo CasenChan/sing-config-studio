@@ -21,7 +21,7 @@ const minimal = {
   bridge: ob({ type: "bridge", tag: "bridge-out", interface: "eth0" }),
   socks: ob({ type: "socks", tag: "socks-out" }),
   http: ob({ type: "http", tag: "http-out" }),
-  shadowsocks: ob({ type: "shadowsocks", tag: "ss-out", password: "pass" }),
+  shadowsocks: ob({ type: "shadowsocks", tag: "ss-out", password: "AAECAwQFBgcICQoLDA0ODw==" }),
   vmess: ob({ type: "vmess", tag: "vmess-out", uuid }),
   vless: ob({ type: "vless", tag: "vless-out", uuid }),
   trojan: ob({ type: "trojan", tag: "trojan-out", password: "pass" }),
@@ -72,6 +72,26 @@ const fragment = ob({ type: "trojan", tag: "frag", password: "p", tls: true, tls
 assert.equal(validateOutbound(fragment, {}), "");
 assert.equal(buildOutbound(fragment).tls.fragment, true);
 assert.equal(buildOutbound(fragment).tls.record_fragment, true);
+
+// Naive 只输出内核支持的 TLS 字段：默认 uTLS 指纹被静默省略，显式设置的不支持项被拒绝
+const naive = ob({ type: "naive", tag: "naive", username: "u", password: "p", sni: "naive.example.com", fingerprint: "chrome", echEnabled: true, echConfigPath: "/ech.pem" });
+assert.equal(validateOutbound(naive, {}), "");
+assert.deepEqual(buildOutbound(naive).tls, { enabled: true, server_name: "naive.example.com", ech: { enabled: true, config_path: "/ech.pem" } });
+assert.match(validateOutbound({ ...naive, insecure: true }, {}), /只支持 SNI、CA 证书与 ECH.*跳过证书验证/);
+assert.match(validateOutbound({ ...naive, alpn: "h2" }, {}), /ALPN/);
+assert.match(validateOutbound({ ...naive, tls: false }, {}), /必须启用 TLS/);
+
+// Shadowsocks 2022 密钥：标准 Base64、长度随方法变化，EIH 多密钥仅限 AES
+const ss = (overrides) => ob({ type: "shadowsocks", tag: "ss", ...overrides });
+assert.equal(validateOutbound(ss({ password: "AAECAwQFBgcICQoLDA0ODw==" }), {}), "");
+assert.match(validateOutbound(ss({ password: "pass" }), {}), /16 字节密钥/);
+assert.match(validateOutbound(ss({ password: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" }), {}), /16 字节密钥/);
+assert.equal(validateOutbound(ss({ method: "2022-blake3-aes-256-gcm", password: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" }), {}), "");
+assert.equal(validateOutbound(ss({ password: "AAECAwQFBgcICQoLDA0ODw==:AAECAwQFBgcICQoLDA0ODw==" }), {}), "");
+assert.match(validateOutbound(ss({ method: "2022-blake3-chacha20-poly1305", password: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" }), {}), /EIH 仅支持 AES/);
+assert.equal(validateOutbound(ss({ method: "aes-128-gcm", password: "pass" }), {}), "");
+assert.equal(validateOutbound(ss({ method: "none", password: "" }), {}), "");
+assert.match(validateOutbound(ss({ method: "aes-128-gcm", password: "" }), {}), /请填写密码/);
 
 // 传输层、多路复用与 UDP over TCP
 const ws = ob({ type: "vmess", tag: "ws", uuid, tls: true, transport: "ws", path: "/ray", host: "cdn.example.com", maxEarlyData: "2048", earlyDataHeaderName: "Sec-WebSocket-Protocol" });

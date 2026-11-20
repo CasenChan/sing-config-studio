@@ -93,9 +93,19 @@ function checkTun(config) {
     issues.push(issue("warning", "入站", `TUN 已启用 auto_redirect，与 ${redirects.map((item) => item.tag).join("、")} 的透明代理可能重复接管同一批流量`));
   }
   const hijacksDns = (route.rules || []).some((rule) => rule.action === "hijack-dns");
-  const tunHandlesDns = tuns.some((inbound) => inbound.dns_mode === "hijack" || inbound.dns_mode === "native");
-  if (!hijacksDns && !tunHandlesDns) {
-    issues.push(issue("warning", "路由", "TUN 下没有 hijack-dns 规则，客户端 DNS 请求不会进入 sing-box 的 DNS 模块"));
+  if (!hijacksDns) {
+    // 1.14.x：dns_mode 默认在 auto_route 时为 hijack，否则 disabled；只有未设置 dns_address 时，
+    // 发往派生 DNS 地址的连接才会自动按 hijack-dns 处理，显式 dns_address 需要自己写 hijack-dns 规则
+    const configuresDns = (inbound) => (inbound.dns_mode || (inbound.auto_route ? "hijack" : "disabled")) !== "disabled";
+    const hasDnsAddress = (inbound) => [].concat(inbound.dns_address || []).length > 0;
+    const explicit = tuns.filter((inbound) => configuresDns(inbound) && hasDnsAddress(inbound));
+    if (explicit.length) {
+      issues.push(issue("warning", "路由", `${explicit.map((item) => item.tag).join("、")} 设置了 dns_address，内核不再自动劫持发往这些地址的 DNS，需要添加 hijack-dns 规则`));
+    } else if (tuns.some((inbound) => configuresDns(inbound))) {
+      issues.push(issue("warning", "路由", "TUN 只自动接管发往接口 DNS 地址的查询；应用直接使用其它 DNS 服务器（如 8.8.8.8）时不会进入 sing-box 的 DNS 模块，建议添加 hijack-dns 规则"));
+    } else {
+      issues.push(issue("warning", "路由", "TUN 下没有 hijack-dns 规则，客户端 DNS 请求不会进入 sing-box 的 DNS 模块"));
+    }
   }
   return issues;
 }

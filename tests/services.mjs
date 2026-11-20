@@ -16,13 +16,13 @@ const svc = (overrides) => normalizeService({ id: overrides.tag, ...overrides })
 
 const minimal = {
   api: svc({ type: "api", tag: "api" }),
-  derp: svc({ type: "derp", tag: "derp", tlsEnabled: true, tlsCertificatePath: "/c.pem", tlsKeyPath: "/k.pem" }),
+  derp: svc({ type: "derp", tag: "derp", tlsEnabled: true, tlsCertificatePath: "/c.pem", tlsKeyPath: "/k.pem", configPath: "derper.key" }),
   resolved: svc({ type: "resolved", tag: "resolved" }),
   "ssm-api": svc({ type: "ssm-api", tag: "ssm", serversJson: '{"ss-in":"http://127.0.0.1:8080"}' }),
   ccm: svc({ type: "ccm", tag: "ccm", usersJson: '[{"name":"u","token":"t"}]' }),
   ocm: svc({ type: "ocm", tag: "ocm", usersJson: '[{"name":"u","token":"t"}]' }),
   "hysteria-realm": svc({ type: "hysteria-realm", tag: "realm", tlsEnabled: true, tlsCertificatePath: "/c.pem", tlsKeyPath: "/k.pem", usersJson: '[{"name":"u","token":"t"}]' }),
-  "usbip-server": svc({ type: "usbip-server", tag: "usbip-server" }),
+  "usbip-server": svc({ type: "usbip-server", tag: "usbip-server", devicesJson: '[{"bus_id": "1-1"}]' }),
   "usbip-client": svc({ type: "usbip-client", tag: "usbip-client", server: "10.0.0.2" })
 };
 assert.deepEqual(Object.keys(minimal).sort(), [...SERVICE_TYPES].sort(), "所有 1.14 服务类型都应有最小模板");
@@ -46,6 +46,14 @@ assert.match(validateService(svc({ type: "ssm-api", tag: "s" }), {}), /至少一
 assert.match(validateService(svc({ type: "ccm", tag: "c", usersJson: '[{"name":"u"}]' }), {}), /token/);
 assert.match(validateService(svc({ type: "ccm", tag: "c", usersJson: '[{"token":"t"}]', detour: "ghost" }), { outboundTags: ["direct"] }), /detour 出站不存在/);
 assert.match(validateService(svc({ type: "usbip-client", tag: "u" }), {}), /服务器地址/);
+// 与内核一致：DERP 必须有 config_path；默认 provider 的 USB/IP Server 至少一个设备匹配
+assert.match(validateService({ ...minimal.derp, configPath: "" }, {}), /config_path/);
+assert.match(validateService(svc({ type: "usbip-server", tag: "u" }), {}), /至少一个设备匹配/);
+assert.equal(validateService(svc({ type: "usbip-server", tag: "u", provider: "dynamic" }), {}), "");
+assert.match(validateService(svc({ type: "usbip-server", tag: "u", devicesJson: '[{"busid": "1-1"}]' }), {}), /不支持的字段：busid/);
+assert.match(validateService(svc({ type: "usbip-client", tag: "u", server: "10.0.0.2", devicesJson: '[{"vendor_id": "0x1234"}]' }), {}), /vendor_id 必须是数字/);
+assert.match(validateService(svc({ type: "usbip-client", tag: "u", server: "10.0.0.2", devicesJson: '[{}]' }), {}), /至少需要一个匹配字段/);
+assert.equal(validateService(svc({ type: "usbip-client", tag: "u", server: "10.0.0.2", devicesJson: '[{"vendor_id": 4660, "product_id": 22136}]' }), {}), "");
 assert.match(validateService(svc({ type: "api", tag: "a", advancedJson: '{"cache_file":"x"}' }), {}), /已弃用|已移除/);
 assert.match(validateService(svc({ type: "api", tag: "a", advancedJson: '{"nope":1}' }), {}), /不是 sing-box API 1.14 字段/);
 

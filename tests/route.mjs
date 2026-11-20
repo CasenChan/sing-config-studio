@@ -43,11 +43,17 @@ assert.deepEqual(buildRouteRule(resolveRule), {
 });
 assert.match(validateRouteRule(rule({ action: "resolve", resolveServer: "ghost" }), context), /DNS Server 不存在/);
 
-const options = rule({ action: "route-options", tlsFragment: true, tlsRecordFragment: true, tlsSpoof: "www.example.com", tlsSpoofMethod: "wrong-checksum", udpConnect: true });
+const options = rule({ action: "route-options", tlsRecordFragment: true, tlsSpoof: "www.example.com", tlsSpoofMethod: "wrong-checksum", udpConnect: true });
 assert.equal(validateRouteRule(options, context), "");
 assert.deepEqual(buildRouteRule(options), {
-  action: "route-options", udp_connect: true, tls_fragment: true, tls_record_fragment: true, tls_spoof: "www.example.com", tls_spoof_method: "wrong-checksum"
+  action: "route-options", udp_connect: true, tls_record_fragment: true, tls_spoof: "www.example.com", tls_spoof_method: "wrong-checksum"
 });
+// 内核：route-options 的两种分片互斥，且不能为空
+assert.match(validateRouteRule({ ...options, tlsFragment: true }, context), /不能同时启用/);
+assert.match(validateRouteRule(rule({ action: "route-options", tlsFragment: true, advancedJson: '{"tls_record_fragment":true}' }), context), /不能同时启用/);
+assert.match(validateRouteRule(rule({ action: "route-options" }), context), /至少需要设置一个选项/);
+assert.equal(validateRouteRule(rule({ action: "route-options", advancedJson: '{"fallback_delay":300}' }), context), "");
+assert.equal(validateRouteRule(rule({ action: "route", outbound: "direct", tlsFragment: true, tlsRecordFragment: true }), context), "");
 assert.match(validateRouteRule(rule({ action: "route-options", tlsSpoofMethod: "wrong-checksum" }), context), /伪造 SNI/);
 
 const bypass = rule({ action: "bypass", outbound: "direct", ipIsPrivate: true });
@@ -172,3 +178,6 @@ assert.equal(buildRouteSection({ ...routeState, final: "direct" }, { outboundTag
 assert.equal(buildRouteSection(routeState, { outboundTags: ["direct"], fallbackFinal: "proxy" }).final, undefined);
 
 console.log("route final fallback test passed");
+
+// 1.14.x 移除了 1.14.0 的 direct 规则动作
+assert.match(validateRouteRule(normalizeRouteRule({ action: "direct", ipIsPrivate: true }), { outboundTags: ["direct"] }), /1\.14\.x 移除/);

@@ -229,6 +229,31 @@ export function validateListenFields(endpoint, detourTags = [], { detourLabel = 
   return "";
 }
 
+// Shadowsocks 2022 的密钥长度（字节），与内核 `bad key length` 校验一致
+export const SHADOWSOCKS_2022_KEY_LENGTH = Object.freeze({
+  "2022-blake3-aes-128-gcm": 16,
+  "2022-blake3-aes-256-gcm": 32,
+  "2022-blake3-chacha20-poly1305": 32
+});
+
+function base64ByteLength(value) {
+  if (!value || value.length % 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return -1;
+  return value.length / 4 * 3 - (value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0);
+}
+
+// 2022 方法要求标准 Base64 编码、长度精确的密钥；multiple 允许出站 EIH 的冒号分隔多密钥（仅 AES）
+export function shadowsocksKeyError(method, password, { label = "密码", multiple = false } = {}) {
+  const length = SHADOWSOCKS_2022_KEY_LENGTH[method];
+  if (!length) return "";
+  const keys = String(password || "").trim().split(":");
+  if (keys.length > 1 && !multiple) return `${label}只能是单个密钥`;
+  if (keys.length > 1 && !method.includes("-aes-")) return `${method} 不支持冒号分隔的多密钥（EIH 仅支持 AES 方法）`;
+  if (keys.some((key) => base64ByteLength(key) !== length)) {
+    return `${label}必须是 Base64 编码的 ${length} 字节密钥，可用 sing-box generate rand --base64 ${length} 生成`;
+  }
+  return "";
+}
+
 export function hasForbiddenKeys(value, forbidden = new Set(["domain_strategy"])) {
   if (!value || typeof value !== "object") return "";
   for (const [key, child] of Object.entries(value)) {

@@ -11,6 +11,7 @@ import {
   optionalPositiveInteger,
   parseJsonArray,
   parseJsonObject,
+  shadowsocksKeyError,
   splitLines,
   splitList,
   validateListenFields,
@@ -50,10 +51,10 @@ export const INBOUND_GROUP_LABELS = Object.freeze({
 
 const USER_SHAPES = {
   auth: { required: ["username", "password"], optional: [], sample: '[{"username": "user", "password": "pass"}]' },
-  shadowsocks: { required: ["name", "password"], optional: [], sample: '[{"name": "user", "password": "base64key"}]' },
-  vmess: { required: ["name", "uuid"], optional: ["alterId"], sample: '[{"name": "user", "uuid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"}]' },
-  vless: { required: ["name", "uuid"], optional: ["flow"], sample: '[{"name": "user", "uuid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", "flow": "xtls-rprx-vision"}]' },
-  trojan: { required: ["name", "password"], optional: [], sample: '[{"name": "user", "password": "pass"}]' },
+  shadowsocks: { required: ["password"], optional: ["name"], sample: '[{"name": "user", "password": "base64key"}]' },
+  vmess: { required: ["uuid"], optional: ["name", "alterId"], sample: '[{"name": "user", "uuid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"}]' },
+  vless: { required: ["uuid"], optional: ["name", "flow"], sample: '[{"name": "user", "uuid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", "flow": "xtls-rprx-vision"}]' },
+  trojan: { required: ["password"], optional: ["name"], sample: '[{"name": "user", "password": "pass"}]' },
   hysteria: { required: ["auth_str"], optional: ["name", "auth"], sample: '[{"name": "user", "auth_str": "pass"}]' },
   hysteria2: { required: ["password"], optional: ["name"], sample: '[{"name": "user", "password": "pass"}]' },
   tuic: { required: ["uuid", "password"], optional: ["name"], sample: '[{"name": "user", "uuid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", "password": "pass"}]' },
@@ -118,7 +119,7 @@ const TYPE_DEFAULTS = {
     autoRoute: true,
     autoRedirect: false,
     strictRoute: true,
-    stack: "mixed",
+    stack: "",
     routeAddress: "",
     routeExcludeAddress: "",
     routeAddressSet: "",
@@ -343,7 +344,8 @@ const BUILDERS = {
     ...buildListenFields(inbound),
     network: inbound.network || undefined,
     method: inbound.method,
-    password: buildUsers(inbound) ? undefined : inbound.password,
+    // 2022 多用户仍需要服务端 PSK；旧方法的多用户模式不使用顶层密码
+    password: buildUsers(inbound) && !String(inbound.method || "").startsWith("2022-") ? undefined : inbound.password,
     users: buildUsers(inbound),
     managed: inbound.managed || undefined,
     multiplex: buildMultiplex(inbound)
@@ -575,9 +577,14 @@ export function validateInbound(source, { inbounds = [], outboundTags = [], dnsS
   if (inbound.type === "shadowsocks") {
     if (!inbound.method) return "请选择 Shadowsocks 加密方法";
     const users = parseJsonArray(inbound.usersJson, "用户列表");
-    if (!users.length && !String(inbound.password || "").trim()) return "请填写服务端密码或至少一个用户";
-    if (inbound.method.startsWith("2022-") && users.length && !String(inbound.password || "").trim() && !extra.password) {
-      return "2022 系列加密在多用户模式下仍需要服务端密码";
+    const serverPassword = String(inbound.password || "").trim() || extra.password;
+    if (inbound.method !== "none" && !users.length && !serverPassword) return "请填写服务端密码或至少一个用户";
+    if (inbound.method.startsWith("2022-")) {
+      if (users.length && !serverPassword) return "2022 系列加密在多用户模式下仍需要服务端密码";
+      if (users.length && !inbound.method.includes("-aes-")) return `${inbound.method} 不支持多用户，请改用 AES 方法或只保留服务端密码`;
+      const keyError = shadowsocksKeyError(inbound.method, serverPassword, { label: "服务端密码" })
+        || users.map((user, index) => shadowsocksKeyError(inbound.method, user.password, { label: `用户 ${index + 1} 的密码` })).find(Boolean);
+      if (keyError) return keyError;
     }
   }
   if (inbound.type === "shadowtls") {

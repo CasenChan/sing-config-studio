@@ -129,6 +129,44 @@ try {
   await wait(200);
   assert.equal((await config()).outbounds.some((item) => item.tag === "trojan-edited"), false);
 
+  // Naive：表单只显示内核支持的 TLS 字段，默认 uTLS 指纹不会写进配置（1.14 内核会拒绝）
+  await page.click("#addNodeBtn");
+  await page.click('button[data-node-type="naive"]');
+  assert.equal(await page.locator('#nodeFields [data-field="fingerprint"]').count(), 0, "Naive 不应提供 uTLS 指纹");
+  assert.equal(await page.locator('#nodeFields [data-field="insecure"]').count(), 0, "Naive 不应提供 insecure");
+  await page.fill('#nodeFields [data-field="server"]', "naive.example.com");
+  await page.fill('#nodeFields [data-field="username"]', "u");
+  await page.fill('#nodeFields [data-field="password"]', "p");
+  await page.click("#nodeForm .primary-button");
+  await wait(200);
+  const naiveOut = (await config()).outbounds.find((item) => item.type === "naive");
+  assert.ok(naiveOut, "Naive 节点应进入配置");
+  assert.equal(naiveOut.tls.utls, undefined);
+  await page.locator("#nodeList .node-item").last().locator(".delete-node").click();
+  await wait(200);
+
+  // 导入带来的 insecure / alpn 在 Naive 表单里不可见：列表提示错误，打开后直接保存即可清除
+  const naivePage = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await naivePage.goto(base, { waitUntil: "networkidle" });
+  await naivePage.evaluate(() => {
+    const key = "sing-config-studio:v1";
+    const saved = JSON.parse(localStorage.getItem(key));
+    saved.nodes.push({ id: "naive-hidden", type: "naive", tag: "naive-hidden", server: "n.example.com", port: 443, username: "u", password: "p", tls: true, insecure: true, alpn: "h2", fingerprint: "chrome" });
+    localStorage.setItem(key, JSON.stringify(saved));
+  });
+  await naivePage.reload({ waitUntil: "networkidle" });
+  const hiddenNaive = naivePage.locator('#nodeList .node-item[data-id="naive-hidden"]');
+  assert.equal(await hiddenNaive.evaluate((el) => el.classList.contains("has-issue")), true);
+  assert.match(await hiddenNaive.textContent(), /只支持 SNI、CA 证书与 ECH/);
+  await hiddenNaive.locator(".node-main").click();
+  await naivePage.click("#nodeForm .primary-button");
+  await wait(200);
+  assert.equal(await naivePage.locator("#nodeModal").evaluate((el) => el.open), false, "清除隐藏字段后应能保存");
+  assert.equal(await hiddenNaive.evaluate((el) => el.classList.contains("has-issue")), false);
+  const savedNaive = JSON.parse(await naivePage.locator("#configOutput").inputValue()).outbounds.find((item) => item.tag === "naive-hidden");
+  assert.deepEqual(savedNaive.tls, { enabled: true });
+  await naivePage.close();
+
   // 导入分享链接
   await page.click("#importBtn");
   await page.fill("#importText", "hysteria2://pw@hy2.example.com:8443?sni=hy2.example.com#Imported");

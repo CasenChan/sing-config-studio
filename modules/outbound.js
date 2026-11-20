@@ -8,6 +8,7 @@ import {
   optionalPort,
   optionalPositiveInteger,
   parseJsonObject,
+  shadowsocksKeyError,
   splitLines,
   splitList,
   validateDialFields
@@ -22,7 +23,7 @@ export const OUTBOUND_TYPE_META = Object.freeze({
   vmess: { label: "VMess", note: "VMess 客户端", prefix: "vmess", group: "proxy", tls: true, transport: true, multiplex: true, reality: true },
   vless: { label: "VLESS", note: "VLESS 客户端，支持 Vision 与 REALITY", prefix: "vless", group: "proxy", tls: true, transport: true, multiplex: true, reality: true },
   trojan: { label: "Trojan", note: "Trojan 客户端", prefix: "trojan", group: "proxy", tls: true, transport: true, multiplex: true, reality: true },
-  naive: { label: "Naive", note: "NaïveProxy 客户端", prefix: "naive", group: "proxy", tls: true },
+  naive: { label: "Naive", note: "NaïveProxy 客户端", prefix: "naive", group: "proxy", tls: true, tlsRequired: true, limitedTls: true },
   hysteria: { label: "Hysteria", note: "Hysteria v1 客户端", prefix: "hysteria", group: "proxy", tls: true, tlsRequired: true, quic: true },
   hysteria2: { label: "Hysteria 2", note: "Hysteria v2 客户端", prefix: "hy2", group: "proxy", tls: true, tlsRequired: true, quic: true },
   shadowtls: { label: "ShadowTLS", note: "配合其它出站使用的握手伪装", prefix: "shadowtls", group: "proxy", tls: true },
@@ -154,9 +155,37 @@ export function normalizeOutbound(node = {}) {
   return { ...BASE_DEFAULTS, ...TYPE_DEFAULTS[type], ...node, type };
 }
 
+// Naive 走 Cronet，内核只接受 server_name、certificate、certificate_path 与 ech
+export const NAIVE_UNSUPPORTED_TLS = Object.freeze([
+  ["insecure", "跳过证书验证"],
+  ["disableSni", "不发送 SNI"],
+  ["alpn", "ALPN"],
+  ["tlsMinVersion", "最低 TLS 版本"],
+  ["tlsMaxVersion", "最高 TLS 版本"],
+  ["tlsFragment", "TLS 分片"],
+  ["tlsRecordFragment", "TLS 记录分片"],
+  ["reality", "REALITY"]
+]);
+
+function buildEch(node) {
+  return node.echEnabled
+    ? compact({ enabled: true, config: splitLines(node.echConfig), config_path: String(node.echConfigPath || "").trim() })
+    : undefined;
+}
+
 function buildTls(node) {
   const meta = OUTBOUND_TYPE_META[node.type];
   if (!meta.tls || !node.tls) return undefined;
+  if (meta.limitedTls) {
+    // uTLS 指纹是所有节点的默认值，对 Naive 静默省略，避免旧档案和导入节点被内核拒绝
+    return compact({
+      enabled: true,
+      server_name: String(node.sni || "").trim() || undefined,
+      certificate: String(node.tlsCertificate || "").trim(),
+      certificate_path: String(node.tlsCertificatePath || "").trim(),
+      ech: buildEch(node)
+    });
+  }
   return compact({
     enabled: true,
     disable_sni: node.disableSni || undefined,
@@ -170,9 +199,7 @@ function buildTls(node) {
     fragment: node.tlsFragment || undefined,
     fragment_fallback_delay: String(node.tlsFragmentFallbackDelay || "").trim(),
     record_fragment: node.tlsRecordFragment || undefined,
-    ech: node.echEnabled
-      ? compact({ enabled: true, config: splitLines(node.echConfig), config_path: String(node.echConfigPath || "").trim() })
-      : undefined,
+    ech: buildEch(node),
     utls: node.fingerprint ? { enabled: true, fingerprint: node.fingerprint } : undefined,
     reality: meta.reality && node.reality
       ? compact({ enabled: true, public_key: String(node.publicKey || "").trim(), short_id: String(node.shortId || "").trim() })
@@ -424,6 +451,10 @@ export function validateOutbound(source, { nodes = [], outboundTags = [], dnsSer
     if (node.echEnabled && node.echConfig && node.echConfigPath) return "ECH 配置内容与路径不能同时设置";
     const durationError = validateDuration(node.tlsFragmentFallbackDelay, "TLS 分片回退延迟");
     if (durationError) return durationError;
+    if (meta.limitedTls) {
+      const unsupported = NAIVE_UNSUPPORTED_TLS.find(([key]) => node[key] && String(node[key]).trim());
+      if (unsupported) return `${meta.label} 的 TLS 只支持 SNI、CA 证书与 ECH，请关闭或清空：${unsupported[1]}`;
+    }
   }
   if (node.reality) {
     if (meta.quic) return `${meta.label} 基于 QUIC，REALITY 客户端无法提供 QUIC 所需的标准 TLS 配置`;
@@ -443,8 +474,13 @@ export function validateOutbound(source, { nodes = [], outboundTags = [], dnsSer
     const durationError = validateDuration(node.heartbeat, "心跳间隔");
     if (durationError) return durationError;
   }
-  if (["trojan", "hysteria2", "anytls", "shadowsocks"].includes(node.type) && !node.password) return "请填写密码";
-  if (node.type === "shadowsocks" && !node.method) return "请选择加密方法";
+  if (["trojan", "hysteria2", "anytls"].includes(node.type) && !node.password) return "请填写密码";
+  if (node.type === "shadowsocks") {
+    if (!node.method) return "请选择加密方法";
+    if (node.method !== "none" && !node.password) return "请填写密码";
+    const keyError = shadowsocksKeyError(node.method, node.password, { multiple: true });
+    if (keyError) return keyError;
+  }
   if (node.type === "hysteria" && !String(node.authString || "").trim()) return "Hysteria 需要填写认证字符串";
   if (node.type === "hysteria2" && node.obfsType && !String(node.obfsPassword || "").trim()) return "启用混淆后需要填写混淆密码";
   if (["hysteria", "hysteria2"].includes(node.type)) {
@@ -520,12 +556,12 @@ export function normalizeGroup(group = {}) {
 
 export function groupMembers(source, { nodeTags = [], groupTags = [] } = {}) {
   const group = normalizeGroup(source);
-  const explicit = splitList(group.members);
-  const members = [];
-  for (const tag of explicit) if (!members.includes(tag)) members.push(tag);
-  if (group.includeAllNodes) for (const tag of nodeTags) if (!members.includes(tag)) members.push(tag);
-  if (group.includeDirect && !members.includes("direct")) members.push("direct");
-  return members.filter((tag) => tag !== group.tag && (nodeTags.includes(tag) || groupTags.includes(tag) || tag === "direct"));
+  // Set 保留首次出现的顺序；节点很多时避免 includes 带来的 O(n²)
+  const members = new Set(splitList(group.members));
+  if (group.includeAllNodes) for (const tag of nodeTags) members.add(tag);
+  if (group.includeDirect) members.add("direct");
+  const known = new Set([...nodeTags, ...groupTags, "direct"]);
+  return [...members].filter((tag) => tag !== group.tag && known.has(tag));
 }
 
 export function buildGroup(source, context = {}) {

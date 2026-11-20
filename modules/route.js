@@ -21,6 +21,9 @@ export const ROUTE_ACTION_META = Object.freeze({
   resolve: { label: "Resolve · 解析目标域名" }
 });
 
+// 1.14.0 曾提供 direct 规则动作（带拨号字段），1.14.x 已移除，内核会拒绝
+export const REMOVED_DIRECT_ACTION = "direct 规则动作已在 sing-box 1.14.x 移除：请新建带拨号设置的 Direct 出站，再把本规则改为 route 到该出站";
+
 export const SNIFFERS = ["tls", "http", "quic", "dns", "stun", "bittorrent", "dtls", "ssh", "rdp", "ntp"];
 const NETWORKS = ["tcp", "udp", "icmp"];
 const INTERFACE_TYPES = ["wifi", "cellular", "ethernet", "other"];
@@ -161,6 +164,11 @@ function buildRouteMatchFields(rule) {
   };
 }
 
+const ROUTE_OPTION_KEYS = new Set([
+  "override_address", "override_port", "network_strategy", "fallback_delay", "udp_disable_domain_unmapping", "udp_connect",
+  "udp_timeout", "tls_fragment", "tls_fragment_fallback_delay", "tls_record_fragment", "tls_spoof", "tls_spoof_method"
+]);
+
 function buildRouteOptions(rule) {
   return {
     override_address: String(rule.overrideAddress || "").trim(),
@@ -272,6 +280,7 @@ export function validateRouteRule(source, { outboundTags = [], ruleSetTags = [],
   const rule = normalizeRouteRule(source);
   const action = rule.action || "route";
   const meta = ROUTE_ACTION_META[action];
+  if (action === "direct") return REMOVED_DIRECT_ACTION;
   if (!meta) return `不支持的路由动作：${action}`;
 
   const advancedError = validateAdvanced(rule.advancedJson, RULE_EXTRA_KEYS, FORBIDDEN_RULE_KEYS, "附加规则参数");
@@ -330,6 +339,12 @@ export function validateRouteRule(source, { outboundTags = [], ruleSetTags = [],
     if (rule.tlsSpoofMethod && !rule.tlsSpoof) return "设置 TLS 伪造方式前需要先填写伪造 SNI";
     const durationError = validateDuration(rule.udpTimeout, "UDP 超时") || validateDuration(rule.tlsFragmentFallbackDelay, "TLS 分片回退延迟");
     if (durationError) return durationError;
+  }
+  if (action === "route-options") {
+    // 与内核 RouteOptionsActionOptions 的解码校验一致（附加参数会合并进最终规则）
+    const options = { ...compact(buildRouteOptions(rule)), ...parseJsonObject(rule.advancedJson, "附加规则参数") };
+    if (options.tls_fragment && options.tls_record_fragment) return "route-options 中 TLS 分片与 TLS 记录分片不能同时启用";
+    if (!Object.keys(options).some((key) => ROUTE_OPTION_KEYS.has(key))) return "Route Options 至少需要设置一个选项";
   }
   if (action === "reject") {
     if (rule.rejectMethod && !REJECT_METHODS.includes(rule.rejectMethod)) return "拒绝方式只能是 default、drop 或 reply";

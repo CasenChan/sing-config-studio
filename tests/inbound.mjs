@@ -56,7 +56,8 @@ assert.deepEqual(buildInbound(minimal.direct), { type: "direct", tag: "direct-in
 const tun = buildInbound(minimal.tun);
 assert.deepEqual(tun.address, ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]);
 assert.equal(tun.auto_route, true);
-assert.equal(tun.stack, "mixed");
+assert.equal("stack" in tun, false, "新建 TUN 不写 stack，兼容 1.15 的弃用");
+assert.equal(buildInbound(inb({ type: "tun", tag: "t", stack: "gvisor" })).stack, "gvisor");
 assert.equal(JSON.stringify(tun).includes("inet4_address"), false);
 assert.equal(validateInbound(inb({ type: "tun", tag: "t", dnsMode: "hijack" }), {}), "");
 assert.match(validateInbound(inb({ type: "tun", tag: "t", dnsMode: "hijacked" }), {}), /DNS 模式无效/);
@@ -86,6 +87,24 @@ assert.equal(buildInbound(minimal.shadowtls).handshake.server, "example.com");
 assert.equal(buildInbound(minimal.shadowtls).version, 3);
 assert.match(validateInbound(inb({ type: "snell", tag: "s", version: "6", psk: "p", obfsMode: "http" }), {}), /v6 不支持 obfs/);
 assert.match(validateInbound(inb({ type: "shadowsocks", tag: "s", password: "" }), {}), /服务端密码或至少一个用户/);
+
+// Shadowsocks 2022：多用户仍输出服务端 PSK（内核缺少时报 missing psk），密钥长度按方法校验
+const k16 = "AAECAwQFBgcICQoLDA0ODw==";
+const k32 = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+const ssMulti = inb({ type: "shadowsocks", tag: "ss-multi", listenPort: "8388", password: k16, usersJson: JSON.stringify([{ password: k16 }]) });
+assert.equal(validateInbound(ssMulti, {}), "");
+assert.equal(buildInbound(ssMulti).password, k16);
+assert.deepEqual(buildInbound(ssMulti).users, [{ password: k16 }]);
+assert.match(validateInbound({ ...ssMulti, password: "pass" }, {}), /服务端密码必须是 Base64 编码的 16 字节密钥/);
+assert.match(validateInbound({ ...ssMulti, usersJson: '[{"password":"pass"}]' }, {}), /用户 1 的密码必须是/);
+assert.match(validateInbound({ ...ssMulti, password: "" }, {}), /仍需要服务端密码/);
+assert.match(validateInbound({ ...ssMulti, method: "2022-blake3-chacha20-poly1305", password: k32, usersJson: JSON.stringify([{ password: k32 }]) }, {}), /不支持多用户/);
+const ssLegacyMulti = inb({ type: "shadowsocks", tag: "ss-legacy", listenPort: "8389", method: "aes-128-gcm", password: "server", usersJson: '[{"name":"u","password":"p"}]' });
+assert.equal(validateInbound(ssLegacyMulti, {}), "");
+assert.equal(buildInbound(ssLegacyMulti).password, undefined);
+assert.equal(validateInbound(inb({ type: "shadowsocks", tag: "ss-none", listenPort: "8390", method: "none" }), {}), "");
+// 1.14 起用户 name 可省略
+assert.equal(validateInbound(inb({ type: "vless", tag: "v-noname", listenPort: "8391", usersJson: '[{"uuid":"17f6f870-6f59-4c91-a4dc-46cfe797c241"}]' }), {}), "");
 
 // Hysteria 2 混淆与伪装
 assert.match(validateInbound(inb({ type: "hysteria2", tag: "h", usersJson: '[{"password":"p"}]', tlsCertificatePath: "/c", tlsKeyPath: "/k", obfsType: "salamander" }), {}), /混淆密码/);

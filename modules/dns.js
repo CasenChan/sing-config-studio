@@ -60,7 +60,7 @@ const SERVER_DEFAULTS = Object.freeze({
   h3: { ...COMMON_DEFAULTS, type: "h3", server: "", serverPort: "", path: "", headersJson: "", ...TLS_DEFAULTS, ...DIAL_DEFAULTS },
   dhcp: { ...COMMON_DEFAULTS, type: "dhcp", interface: "", ...DIAL_DEFAULTS },
   mdns: { ...COMMON_DEFAULTS, type: "mdns", interface: "", ...DIAL_DEFAULTS },
-  fakeip: { ...COMMON_DEFAULTS, type: "fakeip", inet4Range: "198.18.0.0/15", inet6Range: "fc00::/18" },
+  fakeip: { ...COMMON_DEFAULTS, type: "fakeip", inet4Range: "198.18.0.0/15", inet6Range: "2001:2::/48" },
   tailscale: { ...COMMON_DEFAULTS, type: "tailscale", endpoint: "", acceptDefaultResolvers: false, acceptSearchDomain: false },
   openconnect: { ...COMMON_DEFAULTS, type: "openconnect", endpoint: "", acceptDefaultResolvers: false, acceptSearchDomain: false },
   openvpn: { ...COMMON_DEFAULTS, type: "openvpn", endpoint: "", acceptDefaultResolvers: false, acceptSearchDomain: false },
@@ -255,7 +255,7 @@ export function validateDnsServer(source, { servers = [], endpoints = [], outbou
   if (server.type === "fakeip") {
     if (!server.inet4Range && !server.inet6Range) return "FakeIP 至少需要一个 IPv4 或 IPv6 地址池";
     if (server.inet4Range && !isIpPrefix(server.inet4Range, { requirePrefix: true })) return "FakeIP IPv4 段必须是 CIDR，例如 198.18.0.0/15";
-    if (server.inet6Range && !isIpPrefix(server.inet6Range, { requirePrefix: true })) return "FakeIP IPv6 段必须是 CIDR，例如 fc00::/18";
+    if (server.inet6Range && !isIpPrefix(server.inet6Range, { requirePrefix: true })) return "FakeIP IPv6 段必须是 CIDR，例如 2001:2::/48";
   }
   if (meta.endpointTypes) {
     const endpoint = String(server.endpoint || "").trim();
